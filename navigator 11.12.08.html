@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双海网页导航器</title>
+    <style>
+        :root {
+            --bg: #f6f7fb;
+            --panel: #ffffff;
+            --text: #172033;
+            --muted: #667085;
+            --line: #d9dee8;
+            --primary: #0f766e;
+            --primary-soft: #e6fffb;
+            --blue: #2563eb;
+            --amber: #b45309;
+            --red: #b42318;
+            --shadow: 0 18px 45px rgba(23, 32, 51, 0.10);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+            color: var(--text);
+            background:
+                linear-gradient(135deg, rgba(15,118,110,0.10), transparent 34%),
+                linear-gradient(315deg, rgba(37,99,235,0.09), transparent 32%),
+                var(--bg);
+        }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 1px solid rgba(217, 222, 232, 0.9);
+            background: rgba(246, 247, 251, 0.88);
+            backdrop-filter: blur(16px);
+        }
+
+        .topbar-inner {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-mark {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            background: conic-gradient(from 220deg, #0f766e, #2563eb, #f59e0b, #0f766e);
+            display: grid;
+            place-items: center;
+            color: #fff;
+            font-weight: 800;
+            box-shadow: 0 8px 18px rgba(15, 118, 110, 0.25);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 20px;
+            line-height: 1.2;
+        }
+
+        .sub {
+            margin: 2px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        main {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 26px 20px 44px;
+        }
+
+        .toolbar {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 14px;
+            align-items: center;
+            margin-bottom: 18px;
+        }
+
+        .search {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 14px;
+            height: 44px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            box-shadow: 0 8px 22px rgba(23, 32, 51, 0.05);
+        }
+
+        .search span { color: var(--muted); }
+
+        .search input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            font-size: 15px;
+            background: transparent;
+            color: var(--text);
+        }
+
+        .stats {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .pill {
+            border: 1px solid var(--line);
+            background: var(--panel);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 16px;
+        }
+
+        section {
+            grid-column: span 12;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, #ffffff, #fbfcff);
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        .icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            background: var(--primary-soft);
+            color: var(--primary);
+            font-size: 16px;
+        }
+
+        .count {
+            color: var(--muted);
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+            padding: 14px;
+        }
+
+        .card {
+            min-height: 132px;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 10px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(15, 118, 110, 0.45);
+            box-shadow: 0 12px 26px rgba(23, 32, 51, 0.10);
+        }
+
+        .card.disabled {
+            cursor: default;
+            background: #fbfbfc;
+        }
+
+        .card.disabled:hover {
+            transform: none;
+            border-color: var(--line);
+            box-shadow: none;
+        }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .title {
+            margin: 0;
+            font-size: 16px;
+            line-height: 1.35;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+
+        .badge {
+            flex: 0 0 auto;
+            border-radius: 999px;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: 700;
+            background: #ecfdf3;
+            color: var(--primary);
+        }
+
+        .badge.port { background: #eff6ff; color: var(--blue); }
+        .badge.offline { background: #fff7ed; color: var(--amber); }
+        .badge.invalid { background: #fef3f2; color: var(--red); }
+
+        .url {
+            display: block;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--primary);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .empty {
+            display: none;
+            padding: 30px;
+            text-align: center;
+            color: var(--muted);
+            border: 1px dashed var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.76);
+        }
+
+        @media (max-width: 760px) {
+            .topbar-inner { align-items: flex-start; }
+            .toolbar { grid-template-columns: 1fr; }
+            .stats { justify-content: flex-start; }
+            .cards { grid-template-columns: 1fr; }
+            h1 { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand-mark">双</div>
+            <div>
+                <h1>双海网页导航器</h1>
+                <p class="sub">集中访问已部署站点、端口服务和未部署项目</p>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="toolbar">
+            <label class="search">
+                <span>搜索</span>
+                <input id="searchInput" type="search" placeholder="输入名称、路径、端口或地址">
+            </label>
+            <div class="stats">
+                <span class="pill">17 个地址</span>
+                <span class="pill">16 个可用</span>
+                <span class="pill">1 个不可用</span>
+                <span class="pill">1 个未部署</span>
+            </div>
+        </div>
+
+        <div id="emptyState" class="empty">没有找到匹配的项目</div>
+
+        <div class="grid">
+            <section data-section>
+                <div class="section-head">
+                    <div class="section-title"><span class="icon">站</span>主站路径</div>
+                    <div class="count">13 个</div>
+                </div>
+                <div class="cards">
+                    <a class="card" href="http://www.shuanghai.shop/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">英语单词拼写检测（主应用）</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/resume/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">曾卫明个人简历</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/resume/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/wxh/oop_advanced.html" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">面向对象进阶：魔法学院之旅</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/wxh/oop_advanced.html</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/xby/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">基本不等式解法精讲</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/xby/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/xgy/oop_tutorial.html" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">面向对象编程 — 小学四年级教程</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/xgy/oop_tutorial.html</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/zfp/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">智能排班考勤表系统</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/zfp/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/zkx/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">面积公式推导：从现实到数学的奇妙旅程</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/zkx/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/ztx/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">基本不等式终极指南：从理论到实践</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/ztx/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/zwm/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">玩转因式分解：从入门到高手</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/zwm/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/zxh/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">课程表工具</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/zxh/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/zxm/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">理解 x² + y² = 9 是一个圆形</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/zxm/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/zzc/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">英语单词拼写检测（副本）</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/zzc/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop/zzm/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">英语单词拼写检测（副本）</h2><span class="badge">可用</span></div>
+                        <span class="url">http://www.shuanghai.shop/zzm/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                </div>
+            </section>
+
+            <section data-section>
+                <div class="section-head">
+                    <div class="section-title"><span class="icon">端</span>其他端口</div>
+                    <div class="count">4 个</div>
+                </div>
+                <div class="cards">
+                    <a class="card" href="http://www.shuanghai.shop:3000/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">英语学习工具箱（Node.js 后端 API）</h2><span class="badge port">端口</span></div>
+                        <span class="url">http://www.shuanghai.shop:3000/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop:8888/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">交互式电子书创建器</h2><span class="badge port">端口</span></div>
+                        <span class="url">http://www.shuanghai.shop:8888/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card" href="http://www.shuanghai.shop:8090/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">PocketBase 数据库管理后台</h2><span class="badge port">端口</span></div>
+                        <span class="url">http://www.shuanghai.shop:8090/</span>
+                        <span class="action">打开 ↗</span>
+                    </a>
+                    <a class="card disabled" href="http://www.shuanghai.shop:8081/" target="_blank" rel="noopener" data-item>
+                        <div class="card-top"><h2 class="title">Nginx 反向代理（后端未运行，无效）</h2><span class="badge invalid">无效</span></div>
+                        <span class="url">http://www.shuanghai.shop:8081/</span>
+                        <span class="action">尝试打开 ↗</span>
+                    </a>
+                </div>
+            </section>
+
+            <section data-section>
+                <div class="section-head">
+                    <div class="section-title"><span class="icon">未</span>未部署</div>
+                    <div class="count">1 个</div>
+                </div>
+                <div class="cards">
+                    <article class="card disabled" data-item>
+                        <div class="card-top"><h2 class="title">SmartGrader 智能阅卷系统</h2><span class="badge offline">未部署</span></div>
+                        <span class="url">/root/smartgrader-v2/out/</span>
+                        <span class="action">已构建，未配置访问</span>
+                    </article>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const emptyState = document.getElementById('emptyState');
+        const sections = Array.from(document.querySelectorAll('[data-section]'));
+        const items = Array.from(document.querySelectorAll('[data-item]'));
+
+        const updateFilter = () => {
+            const term = searchInput.value.trim().toLowerCase();
+            let visibleCount = 0;
+
+            items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                const matched = !term || text.includes(term);
+                item.style.display = matched ? '' : 'none';
+                if (matched) visibleCount++;
+            });
+
+            sections.forEach(section => {
+                const hasVisibleItem = Array.from(section.querySelectorAll('[data-item]'))
+                    .some(item => item.style.display !== 'none');
+                section.style.display = hasVisibleItem ? '' : 'none';
+            });
+
+            emptyState.style.display = visibleCount ? 'none' : 'block';
+        };
+
+        searchInput.addEventListener('input', updateFilter);
+    </script>
+</body>
+</html>

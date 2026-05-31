@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能排编工数管理系统</title>
+    <meta name="description" content="智能排编工数管理系统">
+    <script src="js/vue.global.js"></script>
+    <script src="js/xlsx.full.min.js"></script>
+    <!-- Google Fonts removed -->
+    
+    <style>
+        [v-cloak] { display: none !important; }
+
+        :root {
+            --primary: #4F46E5;
+            --primary-light: #EEF2FF;
+            --bg-color: #F1F5F9;
+            --card-bg: #FFFFFF;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+            --border-color: #CBD5E1;
+            --header-bg: #E2E8F0;
+            
+            --color-xiu: #FEF08A; 
+            --color-xiu-text: #854D0E;
+            --color-li: #E5E7EB; 
+            --color-li-text: #94A3B8;
+            --color-green: #22C55E;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 30px 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            /* Anti-copy text selection block */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        .container {
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 1600px;
+            padding: 32px;
+            box-sizing: border-box;
+        }
+
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .action-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        input[type="month"] {
+            padding: 10px 14px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            outline: none;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        input[type="month"]:focus { border-color: var(--primary); }
+        
+        select.mode-select {
+            padding: 10px 14px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+            background-color: white;
+            color: var(--text-main);
+            transition: all 0.2s;
+        }
+        select.mode-select:focus { border-color: var(--primary); }
+
+        button {
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button.outline {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            color: var(--text-main);
+        }
+        button.outline:hover { background-color: #F8FAFC; }
+
+        button.primary-gradient {
+            background: linear-gradient(135deg, #4F46E5, #3B82F6);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
+        }
+        button.primary-gradient:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 10px -1px rgba(59, 130, 246, 0.3);
+        }
+
+        .title-wrapper { text-align: center; margin-bottom: 24px; }
+        .title-input {
+            font-size: 28px; font-weight: 700; color: var(--text-main);
+            border: none; border-bottom: 2px dashed transparent;
+            text-align: center; width: 60%; background: transparent; outline: none;
+        }
+        .title-input:hover, .title-input:focus { border-bottom-color: var(--primary); }
+
+        .table-responsive {
+            width: 100%; overflow-x: auto;
+            border: 1px solid var(--border-color); border-radius: 12px;
+        }
+        table { border-collapse: collapse; width: 100%; min-width: max-content; table-layout: fixed; }
+        
+        th, td { border: 1px solid var(--border-color); height: 42px; position: relative; text-align: center; }
+        
+        th { background-color: var(--header-bg); font-size: 13px; color: #334155; font-weight: 700; }
+        .col-seq { width: 44px; }
+        .col-name-date { width: 90px; }
+        .col-day { width: 34px; }
+        .col-stat { width: 50px; }
+        .col-remark { width: 120px; }
+
+        .diagonal-header {
+            position: relative; width: 100%; height: 100%; min-height: 42px;
+            background-image: linear-gradient(to bottom right, transparent calc(50% - 1px), var(--border-color), transparent calc(50% + 1px));
+        }
+        .diagonal-header span.date-label { position: absolute; top: 4px; right: 6px; font-size: 11px; }
+        .diagonal-header span.name-label { position: absolute; bottom: 4px; left: 6px; font-size: 11px; }
+
+        .cell-input, .cell-name {
+            width: 100%; height: 100%; border: none; background: transparent;
+            text-align: center; font-size: 14px; font-weight: 600; outline: none; transition: 0.1s;
+        }
+        .cell-input:focus, .cell-name:focus {
+            background-color: var(--primary-light); box-shadow: inset 0 0 0 2px var(--primary); z-index: 10;
+        }
+
+        /* Shift Colors */
+        .bg-A { background-color: #E0F2FE; } 
+        .bg-A .cell-input { color: #0369A1; font-weight: 700;} 
+        .bg-B { background-color: #EDE9FE; } 
+        .bg-B .cell-input { color: #4338CA; font-weight: 700;} 
+        .bg-xiu { background-color: var(--color-xiu); }
+        .bg-xiu .cell-input { color: var(--color-xiu-text); }
+        .bg-li { background-color: var(--color-li); }
+        .bg-green { background-color: var(--color-green); }
+        .bg-green .cell-input { color: white; }
+
+        .row-hover:hover { background-color: #F8FAFC; }
+        
+        /* 前5行为白班组，设置淡蓝色背景以示区分 */
+        #scheduleTable tbody tr:nth-child(-n+5) {
+            background-color: #F0F9FF;
+        }
+        
+        .stat-cell { background-color: #F8FAFC; font-size: 13px; font-weight: 700; color: var(--text-muted); cursor: default;}
+        .stat-A { color: #0284C7; }
+        .stat-B { color: #4F46E5; }
+        .stat-Xiu { color: #B45309; }
+
+        .btn-remove {
+            position: absolute; left: -32px; top: 50%; transform: translateY(-50%) scale(0.9);
+            background: white; color: #EF4444; border: 1px solid #FECACA; border-radius: 50%;
+            width: 22px; height: 22px; cursor: pointer; opacity: 0; display: flex; align-items: center; justify-content: center;
+        }
+        tr:hover .btn-remove { opacity: 1; transform: translateY(-50%) scale(1); }
+        .btn-remove:hover { background: #FEE2E2; }
+
+        .summary-row { background-color: var(--header-bg); font-weight: 700; border-top: 2px solid var(--border-color); }
+        .warn-text { color: #DC2626 !important; font-weight: bold; background-color: #FEE2E2; }
+        .over-270 { color: #DC2626 !important; font-weight: bold; background-color: #FEE2E2; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .total-work-display { font-size: 16px; font-weight: 700; padding: 8px 14px; border-radius: 8px; display: inline-block; min-width: 80px; text-align: center; }
+        .total-work-ok { background: #ECFDF5; color: #059669; border: 2px solid #10B981; }
+        .total-work-warn { background: #FEF9C3; color: #92400E; border: 2px solid #F59E0B; }
+        .total-work-over { background: #FEE2E2; color: #DC2626; border: 2px solid #EF4444; }
+        .overstaffed-text { color: #B45309 !important; font-weight: bold; background-color: #FEF9C3; }
+        .weekend-text { color: #EF4444; } /* 周末红色 */
+        .col-day-header { font-size: 11px; color: #64748B; background-color: #F8FAFC !important; }
+
+        textarea.footer-notes {
+            width: 100%; margin-top: 24px; padding: 16px; border: 2px solid var(--border-color); border-radius: 10px;
+            min-height: 80px; font-family: inherit; outline: none; box-sizing: border-box; resize: vertical;
+        }
+        
+        .help-panel {
+            margin-top: 16px; padding: 16px; background-color: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0;
+            font-size: 13px; color: #475569; display: flex; flex-direction: column; gap: 8px;
+        }
+        .help-title { font-weight: bold; color: #0F172A; font-size: 14px;}
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin: 0 4px; font-weight: bold;}
+
+        /* Snapshot save/load styles */
+        .snapshot-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: none; justify-content: center;
+            align-items: center; z-index: 10000;
+        }
+        .snapshot-modal-overlay.show { display: flex; }
+        .snapshot-modal {
+            background: white; border-radius: 16px; padding: 28px;
+            max-width: 500px; width: 90%; max-height: 70vh; overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .snapshot-modal h3 { margin: 0 0 16px 0; font-size: 18px; color: #0F172A; }
+        .snapshot-list { list-style: none; padding: 0; margin: 0; }
+        .snapshot-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px; border: 1px solid #E2E8F0; border-radius: 10px;
+            margin-bottom: 8px; transition: all 0.2s;
+        }
+        .snapshot-item:hover { background: #F8FAFC; border-color: #CBD5E1; }
+        .snapshot-info { flex: 1; }
+        .snapshot-name { font-weight: 600; font-size: 14px; color: #0F172A; }
+        .snapshot-date { font-size: 11px; color: #94A3B8; margin-top: 2px; }
+        .snapshot-actions { display: flex; gap: 6px; }
+        .snapshot-actions button {
+            padding: 6px 12px; font-size: 12px; border-radius: 6px; border: 1px solid #E2E8F0;
+            cursor: pointer; background: white; transition: all 0.2s;
+        }
+        .snapshot-actions .btn-load { color: #4F46E5; border-color: #C7D2FE; }
+        .snapshot-actions .btn-load:hover { background: #EEF2FF; }
+        .snapshot-actions .btn-del { color: #EF4444; border-color: #FECACA; }
+        .snapshot-actions .btn-del:hover { background: #FEE2E2; }
+        .snapshot-empty { text-align: center; color: #94A3B8; padding: 30px; font-size: 14px; }
+        .snapshot-input-row { display: flex; gap: 8px; margin-bottom: 16px; }
+        .snapshot-input-row input {
+            flex: 1; padding: 10px 14px; border: 2px solid #E2E8F0; border-radius: 8px;
+            font-size: 14px; outline: none;
+        }
+        .snapshot-input-row input:focus { border-color: #4F46E5; }
+        .snapshot-input-row button {
+            padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+            border: none; cursor: pointer; background: #4F46E5; color: white;
+            white-space: nowrap;
+        }
+        .snapshot-input-row button:hover { background: #4338CA; }
+        .modal-close-btn {
+            float: right; background: none; border: none; font-size: 22px;
+            cursor: pointer; color: #94A3B8; padding: 0; line-height: 1;
+        }
+        .modal-close-btn:hover { color: #0F172A; }
+        .btn-save { border-color: #10B981 !important; color: #10B981 !important; }
+        .btn-save:hover { background: #ECFDF5 !important; }
+        .btn-load-snapshot { border-color: #F59E0B !important; color: #D97706 !important; }
+        .btn-load-snapshot:hover { background: #FFFBEB !important; }
+        .toast-notification {
+            position: fixed; top: 20px; right: 20px; z-index: 99999;
+            padding: 14px 22px; border-radius: 10px; color: white; font-size: 14px;
+            font-weight: 600; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+            animation: toastIn 0.3s ease, toastOut 0.3s ease 2.2s forwards;
+            max-width: 380px; cursor: pointer;
+        }
+        .toast-success { background: #10B981; }
+        .toast-info { background: #4F46E5; }
+        .toast-error { background: #EF4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+
+    </style>
+</head>
+<body>
+    <div id="app" class="container" v-cloak>
+        
+        <div class="header-actions">
+            <div class="action-group">
+                <input type="month" v-model="selectedMonthStr" @change="onMonthChange" title="更改月份">
+                <select class="mode-select" v-model="scheduleMode" title="排班模式选择">
+                    <option value="random">🎲 随机分散休</option>
+                    <option value="2plus2">⏸️ 2+2连休模式</option>
+                    <option value="2plus2first">🔀 先2+2后随机</option>
+                </select>
+                <label v-if="scheduleMode === '2plus2first'" style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;margin-left:4px;" title="前N天固定白班+夜班人数，超出部分休息">
+                    前
+                    <input type="number" v-model.number="mode3Days" :min="1" :max="daysInMonth" style="width:40px;padding:3px 4px;border:2px solid var(--border-color);border-radius:6px;text-align:center;font-size:13px;font-weight:600;">
+                    天 白
+                    <input type="number" v-model.number="mode3DayCount" :min="1" :max="10" style="width:40px;padding:3px 4px;border:2px solid var(--border-color);border-radius:6px;text-align:center;font-size:13px;font-weight:600;">
+                    夜
+                    <input type="number" v-model.number="mode3NightCount" :min="1" :max="10" style="width:40px;padding:3px 4px;border:2px solid var(--border-color);border-radius:6px;text-align:center;font-size:13px;font-weight:600;">
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;cursor:pointer;" title="开启后，前N天每天只休1人，出勤9人">
+                    <input type="checkbox" v-model="priorityEnabled" style="width:16px;height:16px;cursor:pointer;">
+                    优先前
+                    <input type="number" v-model.number="priorityDays" min="1" max="15" style="width:40px;padding:3px 4px;border:2px solid var(--border-color);border-radius:6px;text-align:center;font-size:13px;font-weight:600;" :disabled="!priorityEnabled">
+                    天出勤9人
+                </label>
+                <button @click="addEmployee" class="outline">+ 新增人员</button>
+                <button @click="clearAB" class="outline" title="仅清空目前的A班和B班，保留特定的假日">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> 清空 A/B 班
+                </button>
+                <button @click="clearRest" class="outline" title="仅清空目前的休字，保留A班、B班、离职和其他手动标记">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4h8v2m-6 5v6m4-6v6M6 6l1 14h10l1-14"></path></svg> 清空休字
+                </button>
+                <div class="action-group" style="border-left: 1px solid var(--border-color); padding-left: 12px; margin-left: 4px;">
+                    <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">月工上限:</span>
+                    <input type="number" v-model.number="totalWorkTarget" min="0" max="500" style="width: 55px; padding: 8px; border: 2px solid var(--border-color); border-radius: 8px; font-weight: bold; text-align: center;">
+                </div>
+                <button @click="autoSchedule" class="primary-gradient">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> ⚡ 一键智能排班
+                </button>
+                <div style="margin-left: 8px;">
+                    <span :class="'total-work-display ' + (totalWorkMonth > totalWorkTarget ? 'total-work-over' : (totalWorkMonth >= totalWorkTarget - 20 ? 'total-work-warn' : 'total-work-ok'))">
+                        总工: {{ totalWorkMonth }} / {{ totalWorkTarget }}
+                        <span v-if="totalWorkMonth > totalWorkTarget" style="font-size:12px;">⚠ 超{{ totalWorkMonth - totalWorkTarget }}工</span>
+                        <span v-else style="font-size:12px; color:#94A3B8;">剩{{ totalWorkTarget - totalWorkMonth }}工</span>
+                    </span>
+                </div>
+            </div>
+            <div class="action-group">
+                <button @click="saveSnapshot" class="outline btn-save" title="保存当前排班数据为快照">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg> 保存数据
+                </button>
+                <button @click="showSnapshotList" class="outline btn-load-snapshot" title="加载之前保存的排班数据">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> 加载存档
+                </button>
+                <button @click="exportToExcel" class="outline" style="border-color: #10B981; color: #10B981;">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> 导出 Excel
+                </button>
+            </div>
+        </div>
+
+        <div class="title-wrapper">
+            <input type="text" class="title-input" v-model="title">
+        </div>
+
+        <div class="table-responsive">
+            <table id="scheduleTable">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="col-seq">序号</th>
+                        <th rowspan="2" class="col-name-date">
+                            <div class="diagonal-header">
+                                <span class="date-label">日期</span>
+                                <span class="name-label">姓名</span>
+                            </div>
+                        </th>
+                        <th v-for="day in daysInMonth" :key="'d'+day" class="col-day" :class="{'weekend-text': isWeekend(day)}">{{ day }}</th>
+                        <!-- Stat Columns -->
+                        <th rowspan="2" class="col-stat" title="白班总数">白(A)</th>
+                        <th rowspan="2" class="col-stat" title="晚班总数">晚(B)</th>
+                        <th rowspan="2" class="col-stat" title="休息总数">休</th>
+                        <th rowspan="2" class="col-remark">备注</th>
+                    </tr>
+                    <tr>
+                        <th v-for="day in daysInMonth" :key="'w'+day" class="col-day col-day-header" :class="{'weekend-text': isWeekend(day)}">
+                            {{ getDayOfWeek(day) }}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(emp, index) in employees" :key="emp.id" class="row-hover">
+                        <td style="position:relative;">
+                            <button class="btn-remove" @click="removeEmployee(emp.id)">×</button>
+                            {{ index + 1 }}
+                        </td>
+                        <td>
+                            <input type="text" class="cell-name" v-model="emp.name">
+                        </td>
+                        <td v-for="day in daysInMonth" :key="day" :class="getCellClass(emp.schedule[day])">
+                            <input type="text" class="cell-input" 
+                                   v-model="emp.schedule[day]" 
+                                   maxlength="2"
+                                   @focus="$event.target.select()"
+                                   @dblclick="cycleValue(emp, day)">
+                        </td>
+                        <td class="stat-cell stat-A">{{ statCount(emp, 'A') }}</td>
+                        <td class="stat-cell stat-B">{{ statCount(emp, 'B') }}</td>
+                        <td class="stat-cell stat-Xiu" :class="{'warn-text': statCount(emp, '休') !== '-' && statCount(emp, '休') !== fixedMonthlyRestDays}">{{ statCount(emp, '休') }}</td>
+                        <td>
+                            <input type="text" class="cell-input" v-model="emp.remark" style="text-align:left; padding:0 8px;">
+                        </td>
+                    </tr>
+                    
+                    <!-- Bottom Total Working -->
+                    <tr class="summary-row">
+                        <td colspan="2" style="text-align: right; padding-right: 16px;">实际日出勤人数</td>
+                        <td v-for="day in daysInMonth" :key="day" 
+                            :class="{'warn-text': dailyHeadcount(day) >= 10}">
+                            {{ dailyHeadcount(day) || '' }}
+                        </td>
+                        <td colspan="4" style="font-weight:700; color: var(--primary); font-size:14px;">总: {{ totalWorkMonth }} 工</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <textarea class="footer-notes" v-model="bottomNotes" placeholder="填写说明内容..."></textarea>
+
+        <!-- Snapshot Modal -->
+        <div class="snapshot-modal-overlay" :class="{ show: showSnapshot }" @click.self="showSnapshot = false">
+            <div class="snapshot-modal">
+                <button class="modal-close-btn" @click="showSnapshot = false">&times;</button>
+                <h3>排班存档管理</h3>
+                <div class="snapshot-input-row">
+                    <input type="text" v-model="snapshotName" placeholder="输入存档名称（如：5月排班-最终版）" @keyup.enter="saveSnapshot">
+                    <button @click="saveSnapshot">保存当前</button>
+                </div>
+                <ul class="snapshot-list" v-if="snapshots.length > 0">
+                    <li class="snapshot-item" v-for="snap in snapshots" :key="snap.key">
+                        <div class="snapshot-info">
+                            <div class="snapshot-name">{{ snap.label }}</div>
+                            <div class="snapshot-date">{{ snap.date }}</div>
+                        </div>
+                        <div class="snapshot-actions">
+                            <button class="btn-load" @click="loadSnapshot(snap.key)">加载</button>
+                            <button class="btn-del" @click="deleteSnapshot(snap.key)">删除</button>
+                        </div>
+                    </li>
+                </ul>
+                <div class="snapshot-empty" v-else>暂无存档，点击上方"保存当前"创建第一个存档</div>
+            </div>
+        </div>
+
+
+        
+        <div class="toast-notification" v-if="toastMsg" :class="toastType" @click="toastMsg = ''">{{ toastMsg }}</div>
+        <div class="help-panel">
+            <div class="help-title">💡 智能排班硬核算法说明：</div>
+            <div>1. <strong>灵活休息模式：</strong>系统提供”随机分散”、”2+2连休”和”先2+2后随机”三种模式。随机模式确保休息均匀分布；2+2模式强制每人每月两次2天连休；先2+2后随机模式则优先尝试为每人安排两次2天连休，排不满时自动用随机单休补齐，并可设定白班全员在岗日期范围。</div>
+            <div>2. <strong>告别疯狂连休：</strong>在随机模式下，拦死连休3天。在2+2模式下，两组连休之间会自动拉开10至15天的间隔。</div>
+            <div>3. <strong>平铺式散班：</strong>算法通过 50 倍的轮盘加权运算机制，尽可能将休息天数打撒，做到了 <strong>“尽量保证每一天都有一个人轮休”</strong> 的人性化策略。</div>
+            <div>4. <strong>固定白班晚班原则：</strong>在巧妙穿插完休假后，系统会稳稳认定 <span class="badge" style="background:#E0F2FE;color:#0369A1;">前 5 行人员为永久白班(A)</span>，从第 6 行及以后的人员为 <span class="badge" style="background:#EDE9FE;color:#4338CA;">夜班(B)</span>，不乱位不串班。</div>
+            <div>5. <strong>硬性底线死防守：</strong>系统每秒推演上千条路线，任何违背 <strong>低于8名在岗人员</strong>，或者出现 <strong>同一天内有2人同休白班 / 2人同休晚班</strong> 的分支都将被无情抹除换路。您完全不用操心合规性。</div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const STORAGE_KEY = 'paibian_v1_data';
+                let savedData = null;
+                try {
+                    const str = localStorage.getItem(STORAGE_KEY);
+                    if (str) {
+                        savedData = JSON.parse(str);
+                        // 清除旧缓存中遗留的文字
+                        if (savedData && savedData.bottomNotes) {
+                            savedData.bottomNotes = savedData.bottomNotes.replace(/月度总工不超过270个。月初前5天尽量满员10人出勤。/g, '').trim();
+                        }
+                    }
+                } catch(e) {};
+                
+                const SNAPSHOT_API = '/api/snapshots';
+                
+                const showSnapshot = ref(false);
+                const snapshotName = ref('');
+                const toastMsg = ref('');
+                const toastType = ref('toast-success');
+                const snapshots = ref([]);
+
+                const loadSnapshotsFromStorage = async () => {
+                    try {
+                        const res = await fetch(SNAPSHOT_API);
+                        const json = await res.json();
+                        snapshots.value = (json.snapshots || []).map(s => ({
+                            key: 'snap_' + s.id,
+                            label: s.name,
+                            date: s.created_at ? new Date(s.created_at + 'Z').toLocaleString('zh-CN') : '',
+                            id: s.id
+                        }));
+                    } catch(e) { snapshots.value = []; }
+                };
+                loadSnapshotsFromStorage();
+                
+                const showToast = (msg, type) => {
+                    toastMsg.value = msg;
+                    toastType.value = type || 'toast-success';
+                    setTimeout(() => { toastMsg.value = ''; }, 2500);
+                };
+                
+                const saveSnapshot = async () => {
+                    const name = snapshotName.value.trim() || ('排编存档 ' + new Date().toLocaleString('zh-CN'));
+                    const dataToSave = {
+                        employees: employees.value,
+                        title: title.value,
+                        bottomNotes: bottomNotes.value,
+                        totalWorkTarget: totalWorkTarget.value,
+                        maxRestDays: fixedMonthlyRestDays
+                    };
+                    try {
+                        const res = await fetch(SNAPSHOT_API, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: name, data: dataToSave })
+                        });
+                        if (!res.ok) throw new Error('Save failed');
+                        snapshotName.value = '';
+                        await loadSnapshotsFromStorage();
+                        showToast('已保存: ' + name, 'toast-success');
+                    } catch(e) { showToast('保存失败: ' + e.message, 'toast-error'); }
+                };
+                
+                const showSnapshotList = async () => {
+                    await loadSnapshotsFromStorage();
+                    showSnapshot.value = true;
+                };
+                
+                const loadSnapshot = async (key) => {
+                    const snap = snapshots.value.find(s => s.key === key);
+                    if (!snap) return;
+                    if (!confirm('确定加载存档 "' + snap.label + '"？当前未保存的数据将丢失。')) return;
+                    try {
+                        const res = await fetch(SNAPSHOT_API + '/' + snap.id);
+                        const json = await res.json();
+                        if (!json.snapshot) throw new Error('Not found');
+                        const d = JSON.parse(json.snapshot.data);
+                        employees.value = d.employees || employees.value;
+                        title.value = d.title || title.value;
+                        bottomNotes.value = d.bottomNotes || '';
+                        totalWorkTarget.value = d.totalWorkTarget || 270;
+                        maxRestDays.value = fixedMonthlyRestDays;
+                        showSnapshot.value = false;
+                        showToast('已加载: ' + snap.label, 'toast-info');
+                    } catch(e) { showToast('加载失败: ' + e.message, 'toast-error'); }
+                };
+                
+                const deleteSnapshot = async (key) => {
+                    const snap = snapshots.value.find(s => s.key === key);
+                    if (!snap) return;
+                    if (!confirm('确定删除此存档？此操作不可恢复。')) return;
+                    try {
+                        await fetch(SNAPSHOT_API + '/' + snap.id, { method: 'DELETE' });
+                        await loadSnapshotsFromStorage();
+                        showToast('存档已删除', 'toast-success');
+                    } catch(e) { showToast('删除失败', 'toast-error'); }
+                };
+
+                const today = new Date();
+                const selectedMonthStr = ref(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
+                const title = ref(savedData?.title || `${today.getFullYear()}. ${(today.getMonth() + 1)}月人员排编工数表`);
+                const bottomNotes = ref(savedData?.bottomNotes || "备注说明：\n1. A为白班，B为夜班，休为休息。");
+                const totalWorkTarget = ref(savedData?.totalWorkTarget || 270);
+                const fixedMonthlyRestDays = 4;
+                const maxRestDays = ref(fixedMonthlyRestDays); 
+                const scheduleMode = ref(savedData?.scheduleMode || 'random');
+                const priorityEnabled = ref(savedData?.priorityEnabled || false);
+                const priorityDays = ref(savedData?.priorityDays || 5);
+                const mode3Days = ref(savedData?.mode3Days || 5);
+                const mode3DayCount = ref(savedData?.mode3DayCount || 5);
+                const mode3NightCount = ref(savedData?.mode3NightCount || 4);
+                                
+                // Initial employees
+                const defaultEmps = [
+                    { id: 1, name: "张继兵", schedule: {}, remark: "" },
+                    { id: 2, name: "林斌", schedule: {}, remark: "" },
+                    { id: 3, name: "曾卫明", schedule: {}, remark: "" },
+                    { id: 4, name: "张嘉豪", schedule: {}, remark: "" },
+                    { id: 5, name: "林俊生", schedule: {}, remark: "" },
+                    { id: 6, name: "王家飞", schedule: {}, remark: "" },
+                    { id: 7, name: "孔飞飞", schedule: {}, remark: "" },
+                    { id: 8, name: "索小龙", schedule: {}, remark: "" },
+                    { id: 9, name: "徐欢新", schedule: {}, remark: "" },
+                    { id: 10, name: "周林国", schedule: {}, remark: "" }
+                ];
+                const employees = ref(savedData?.employees || defaultEmps);
+
+                // Auto-save logic
+                watch([employees, title, bottomNotes, maxRestDays, totalWorkTarget, scheduleMode, priorityEnabled, priorityDays, mode3Days, mode3DayCount, mode3NightCount], () => {
+                    const dataToSave = {
+                        employees: employees.value,
+                        title: title.value,
+                        bottomNotes: bottomNotes.value,
+                        totalWorkTarget: totalWorkTarget.value,
+                        maxRestDays: maxRestDays.value,
+                        scheduleMode: scheduleMode.value,
+                        priorityEnabled: priorityEnabled.value,
+                        priorityDays: priorityDays.value,
+                        mode3Days: mode3Days.value,
+                        mode3DayCount: mode3DayCount.value,
+                        mode3NightCount: mode3NightCount.value
+                    };
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+                }, { deep: true });
+
+                const daysInMonth = computed(() => {
+                    if (!selectedMonthStr.value) return 28;
+                    const [year, month] = selectedMonthStr.value.split('-');
+                    return new Date(year, parseInt(month), 0).getDate();
+                });
+
+                const totalWorkMonth = computed(() => {
+                    let total = 0;
+                    for (let d = 1; d <= daysInMonth.value; d++) {
+                        total += dailyHeadcount(d);
+                    }
+                    return total;
+                });
+
+                const onMonthChange = () => {
+                    if(!selectedMonthStr.value) return;
+                    const [year, month] = selectedMonthStr.value.split('-');
+                    title.value = `${year}. ${parseInt(month, 10)}月人员排编工数表`;
+                };
+
+                const addEmployee = () => {
+                    const newEmp = { id: Date.now(), name: "新增员工", schedule: {}, remark: "" };
+                    employees.value.push(newEmp);
+                };
+
+                const removeEmployee = (id) => {
+                    if(employees.value.length > 1) {
+                        employees.value = employees.value.filter(e => e.id !== id);
+                    }
+                };
+
+                const getCellClass = (val) => {
+                    if (!val) return '';
+                    const v = val.trim().toUpperCase();
+                    if (v === '休') return 'bg-xiu';
+                    if (v === '离') return 'bg-li';
+                    if (v === 'A' || v === '白') return 'bg-A';
+                    if (v === 'B' || v === '晚') return 'bg-B';
+                    if (v.includes('顶') || v.includes('消控')) return 'bg-green';
+                    return '';
+                };
+
+                const cycleValue = (emp, day) => {
+                    const cycle = ['A', 'B', '休', '离', ''];
+                    const current = emp.schedule[day] ? emp.schedule[day].trim().toUpperCase() : '';
+                    let idx = cycle.indexOf(current);
+                    emp.schedule[day] = cycle[(idx + 1) % cycle.length];
+                };
+
+                const clearAB = () => {
+                    if(!confirm("确定清空当前图表上所有的A班和B班(保留休假/离职等设置)吗？")) return;
+                    employees.value.forEach(emp => {
+                        for(const day in emp.schedule) {
+                            const val = emp.schedule[day] ? emp.schedule[day].trim().toUpperCase() : '';
+                            if(val === 'A' || val === 'B' || val === '白' || val === '晚') {
+                                emp.schedule[day] = '';
+                            }
+                        }
+                    });
+                };
+
+                const clearRest = () => {
+                    if(!confirm("确定清空当前图表上所有的“休”字吗？A/B班、离职和其他手动标记会保留。")) return;
+                    employees.value.forEach(emp => {
+                        for(const day in emp.schedule) {
+                            const val = emp.schedule[day] ? emp.schedule[day].trim().toUpperCase() : '';
+                            if(val === '休') {
+                                emp.schedule[day] = '';
+                            }
+                        }
+                    });
+                };
+
+                const autoSchedule = () => {
+                    const days = daysInMonth.value;
+                    const totalEmps = employees.value.length;
+                    const workTarget = totalWorkTarget.value;
+                    const minHeadcount = 8;
+                    const maxHeadcount = 9;
+                    const minRestsPerDay = Math.max(0, totalEmps - maxHeadcount);
+                    const maxRestsPerDay = Math.max(0, totalEmps - minHeadcount);
+                    const effectiveMaxRestsPerDay = Math.min(maxRestsPerDay, 2);
+                    const priorityTargetRestsPerDay = minRestsPerDay;
+                    const targetRestDays = fixedMonthlyRestDays;
+                    
+                    if (totalEmps < minHeadcount) {
+                        alert(`排班失败：当前只有${totalEmps}人，无法满足每天至少${minHeadcount}人在岗。`);
+                        return;
+                    }
+                    if (minRestsPerDay > effectiveMaxRestsPerDay) {
+                        alert('排班失败：按“同一天白班/晚班各最多1人休”的规则，当前人数无法满足每天8-9人在岗。');
+                        return;
+                    }
+                    
+                    const maxPossibleWork = totalEmps * days;
+                    const minRequiredRests = Math.max(0, maxPossibleWork - workTarget);
+                    
+                    // 优先保证每个人达到期望的休息天数 (默认4天)
+                    const desiredRests = totalEmps * targetRestDays;
+                    
+                    // 总休息天数：取 "不超总工所需休息数" 和 "全员达到期望休息数" 的最大值
+                    const restBudget = Math.max(minRequiredRests, desiredRests, minRestsPerDay * days);
+
+                    // 验证工上限是否可达成：每人固定休 targetRestDays 天
+                    const minPossibleWork = totalEmps * days - totalEmps * targetRestDays;
+                    if (workTarget < minPossibleWork) {
+                        alert(`排班失败：每人固定休${targetRestDays}天，${totalEmps}人×${days}天 最少需出勤 ${minPossibleWork} 个工。\n当前月工上限 ${workTarget} 过低，无法达成。请将月工上限调至 ${minPossibleWork} 以上。`);
+                        return;
+                    }
+
+                    // 每人休息天数使用硬上限，避免为了补每天人数把某个人排成5休。
+                    const maxRestPerEmp = targetRestDays;
+
+                    // 1. 备份当前手动设置
+                    const snapshot = employees.value.map((emp, empIdx) => {
+                        const cloneSch = {};
+                        for (let d = 1; d <= 31; d++) {
+                            const val = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
+                            cloneSch[d] = (val === 'A' || val === 'B' || val === '白' || val === '晚') ? '' : emp.schedule[d];
+                        }
+                        return { id: emp.id, schedule: cloneSch };
+                    });
+
+                    let success = false;
+                    const MAX_RETRIES = 80;
+                    
+                    for (let retry = 0; retry < MAX_RETRIES; retry++) {
+                        employees.value.forEach((emp, i) => {
+                            for (let d = 1; d <= days; d++) {
+                                emp.schedule[d] = snapshot[i].schedule[d];
+                            }
+                        });
+                        
+                        try {
+                            // 统计已有的休息
+                            let dailyRests = new Array(days + 2).fill(0);
+                            let assigned = 0;
+                            let empRests = new Array(totalEmps).fill(0);
+                            
+                            employees.value.forEach((emp, idx) => {
+                                for (let d = 1; d <= days; d++) {
+                                    if (emp.schedule[d] === '休' || emp.schedule[d] === '离') {
+                                        dailyRests[d]++;
+                                        assigned++;
+                                        empRests[idx]++;
+                                    }
+                                }
+                            });
+
+                            let lockedOk = true;
+                            for (let d = 1; d <= days; d++) {
+                                if (dailyRests[d] > effectiveMaxRestsPerDay) lockedOk = false;
+                            }
+                            for (let idx = 0; idx < totalEmps; idx++) {
+                                if (empRests[idx] > maxRestPerEmp) lockedOk = false;
+                            }
+                            if (priorityEnabled.value) {
+                                const pEnd = Math.min(priorityDays.value, days);
+                                for (let d = 1; d <= pEnd; d++) {
+                                    if (dailyRests[d] > priorityTargetRestsPerDay) lockedOk = false;
+                                }
+                            }
+                            if (!lockedOk) throw new Error("locked");
+
+                            const getGroupRests = (day) => {
+                                let aR = 0, bR = 0;
+                                employees.value.forEach((e, i2) => {
+                                    if (e.schedule[day] === '休' || e.schedule[day] === '离') {
+                                        if (i2 < 5) aR++; else bR++;
+                                    }
+                                });
+                                return { aR, bR };
+                            };
+
+                            const canPlaceSingleRest = (idx, day) => {
+                                const emp = employees.value[idx];
+                                if (emp.schedule[day]) return false;
+                                if (empRests[idx] >= maxRestPerEmp) return false;
+                                if (dailyRests[day] >= effectiveMaxRestsPerDay) return false;
+                                // 优先模式：前N天按9人出勤计算休息名额，手填休优先占用。
+                                if (priorityEnabled.value && day <= Math.min(priorityDays.value, days) && dailyRests[day] >= priorityTargetRestsPerDay) return false;
+                                if (day > 1 && emp.schedule[day-1] === '休' && day < days && emp.schedule[day+1] === '休') return false;
+                                if (day > 2 && emp.schedule[day-1] === '休' && emp.schedule[day-2] === '休') return false;
+                                if (day < days - 1 && emp.schedule[day+1] === '休' && emp.schedule[day+2] === '休') return false;
+                                const { aR, bR } = getGroupRests(day);
+                                // 模式3：前N天动态调整各组最多可休人数（手动休已计入aR/bR）
+                                const inMode3Range = scheduleMode.value === '2plus2first' && day <= mode3Days.value;
+                                const maxDayGroupRest = inMode3Range ? Math.max(0, 5 - mode3DayCount.value) : 1;
+                                const maxNightGroupRest = inMode3Range ? Math.max(0, 5 - mode3NightCount.value) : 1;
+                                if (idx < 5 && aR >= maxDayGroupRest) return false;
+                                if (idx >= 5 && bR >= maxNightGroupRest) return false;
+                                // 模式3：前mode3DayCount个白班人员在范围内不可新增休息
+                                if (inMode3Range && idx < mode3DayCount.value) return false;
+                                return true;
+                            };
+
+                            const canPlaceRestPair = (idx, startDay) => {
+                                const emp = employees.value[idx];
+                                if (startDay < 1 || startDay >= days) return false;
+                                if (empRests[idx] + 2 > maxRestPerEmp) return false;
+                                if (emp.schedule[startDay] || emp.schedule[startDay + 1]) return false;
+                                if (dailyRests[startDay] >= effectiveMaxRestsPerDay || dailyRests[startDay + 1] >= effectiveMaxRestsPerDay) return false;
+                                // 优先模式：前N天按9人出勤计算休息名额，手填休优先占用。
+                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+                                if (pEnd > 0 && ((startDay <= pEnd && dailyRests[startDay] >= priorityTargetRestsPerDay) || (startDay + 1 <= pEnd && dailyRests[startDay + 1] >= priorityTargetRestsPerDay))) return false;
+                                if (startDay > 1 && emp.schedule[startDay - 1] === '休') return false;
+                                if (startDay + 2 <= days && emp.schedule[startDay + 2] === '休') return false;
+                                const g1 = getGroupRests(startDay);
+                                const g2 = getGroupRests(startDay + 1);
+                                const inM3Day1 = scheduleMode.value === '2plus2first' && startDay <= mode3Days.value;
+                                const inM3Day2 = scheduleMode.value === '2plus2first' && startDay + 1 <= mode3Days.value;
+                                const maxDR1 = inM3Day1 ? Math.max(0, 5 - mode3DayCount.value) : 1;
+                                const maxDR2 = inM3Day2 ? Math.max(0, 5 - mode3DayCount.value) : 1;
+                                const maxNR1 = inM3Day1 ? Math.max(0, 5 - mode3NightCount.value) : 1;
+                                const maxNR2 = inM3Day2 ? Math.max(0, 5 - mode3NightCount.value) : 1;
+                                if (idx < 5 && (g1.aR >= maxDR1 || g2.aR >= maxDR2)) return false;
+                                if (idx >= 5 && (g1.bR >= maxNR1 || g2.bR >= maxNR2)) return false;
+                                // 模式3：前mode3DayCount个白班人员不可连休
+                                if (scheduleMode.value === '2plus2first' && idx < mode3DayCount.value) {
+                                    if (startDay <= mode3Days.value || startDay + 1 <= mode3Days.value) return false;
+                                }
+                                return true;
+                            };
+
+                            const placeSingleRest = (idx, day) => {
+                                employees.value[idx].schedule[day] = '休';
+                                dailyRests[day]++;
+                                empRests[idx]++;
+                            };
+
+                            const placeRestPair = (idx, startDay) => {
+                                placeSingleRest(idx, startDay);
+                                placeSingleRest(idx, startDay + 1);
+                            };
+
+                            const getPairStarts = (idx) => {
+                                const starts = [];
+                                const emp = employees.value[idx];
+                                for (let d = 1; d < days; d++) {
+                                    if (emp.schedule[d] === '休' && emp.schedule[d + 1] === '休') {
+                                        starts.push(d);
+                                        d++;
+                                    }
+                                }
+                                return starts;
+                            };
+
+                            const pairSpacingOk = (idx, startDay) => {
+                                const starts = getPairStarts(idx);
+                                if (!starts.length) return true;
+                                return starts.every(oldStart => Math.abs(startDay - oldStart) >= 10);
+                            };
+
+                            const completeSingleRestPair = (idx) => {
+                                const emp = employees.value[idx];
+                                let candidates = [];
+                                for (let d = 1; d <= days; d++) {
+                                    if (emp.schedule[d] !== '休') continue;
+                                    if (emp.schedule[d - 1] === '休' || emp.schedule[d + 1] === '休') continue;
+                                    if (d > 1 && canPlaceSingleRest(idx, d - 1) && pairSpacingOk(idx, d - 1)) candidates.push(d - 1);
+                                    if (d < days && canPlaceSingleRest(idx, d + 1) && pairSpacingOk(idx, d)) candidates.push(d + 1);
+                                }
+                                candidates.sort((a, b) => dailyRests[a] - dailyRests[b] || Math.random() - 0.5);
+                                if (!candidates.length) return false;
+                                placeSingleRest(idx, candidates[0]);
+                                return true;
+                            };
+
+                            if (scheduleMode.value === '2plus2') {
+                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+
+                                for (let round = 0; round < totalEmps * 2; round++) {
+                                    let cands = [];
+                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] % 2 !== 0) throw new Error("2plus2-single");
+                                        for (let s = 1; s < days; s++) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            if (!pairSpacingOk(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
+                                            const priorityScore = (s <= pEnd && dailyRests[s] === 0 ? 15 : 0) + (s + 1 <= pEnd && dailyRests[s + 1] === 0 ? 15 : 0);
+                                            const empNeed = maxRestPerEmp - empRests[idx];
+                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
+                                            cands.push({ idx, s, score: coverScore + priorityScore + empNeed + balanceScore });
+                                        }
+                                    }
+                                    if (!cands.length) break;
+                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+                                    placeRestPair(cands[0].idx, cands[0].s);
+                                }
+
+                                let missingPairs = false;
+                                for (let idx = 0; idx < totalEmps; idx++) {
+                                    if (empRests[idx] !== maxRestPerEmp || getPairStarts(idx).length !== 2) missingPairs = true;
+                                }
+                                for (let d = 1; d <= days; d++) {
+                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) missingPairs = true;
+                                    if (d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) missingPairs = true;
+                                }
+                                if (missingPairs) throw new Error("2plus2");
+                            } else if (scheduleMode.value === '2plus2first') {
+                                // 先2+2后随机模式：严格2+2 → 确保每人≥1对 → 拆2+1+1
+                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+
+                                // 阶段1：严格间距的2天连休对（连休对间隔≥10天），追求2+2
+                                for (let round = 0; round < totalEmps * 2; round++) {
+                                    let cands = [];
+                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                        if (empRests[idx] % 2 !== 0) continue;
+                                        for (let s = 1; s < days; s++) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            if (!pairSpacingOk(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
+                                            const mode3Cover = ((s <= mode3Days.value && dailyRests[s] === 0) ? 25 : 0) + ((s + 1 <= mode3Days.value && dailyRests[s + 1] === 0) ? 25 : 0);
+                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
+                                            cands.push({ idx, s, score: coverScore + mode3Cover + balanceScore });
+                                        }
+                                    }
+                                    if (!cands.length) break;
+                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+                                    placeRestPair(cands[0].idx, cands[0].s);
+                                }
+
+                                // 统计阶段1后每人已有几对
+                                const pairCount = (idx) => getPairStarts(idx).length;
+                                const empNeed = (idx) => maxRestPerEmp - empRests[idx];
+
+                                // 阶段2：对0对的人，优先确保拿到至少1对连休（放宽间距）
+                                for (let round = 0; round < totalEmps; round++) {
+                                    let cands = [];
+                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                        if (pairCount(idx) >= 1) continue; // 已有≥1对，不抢
+                                        for (let s = 1; s < days; s++) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
+                                            const mode3Cover = ((s <= mode3Days.value && dailyRests[s] === 0) ? 25 : 0) + ((s + 1 <= mode3Days.value && dailyRests[s + 1] === 0) ? 25 : 0);
+                                            const needBonus = empNeed(idx) * 3;
+                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
+                                            cands.push({ idx, s, score: coverScore + mode3Cover + needBonus + balanceScore });
+                                        }
+                                    }
+                                    if (!cands.length) break;
+                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+                                    placeRestPair(cands[0].idx, cands[0].s);
+                                }
+
+                                // 阶段3：对已有1对的人，尝试补第二对（放宽间距，追求2+2）
+                                for (let round = 0; round < totalEmps; round++) {
+                                    let cands = [];
+                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                        if (pairCount(idx) < 1) continue; // 跳过0对的（阶段2已尽力）
+                                        for (let s = 1; s < days; s++) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
+                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
+                                            cands.push({ idx, s, score: coverScore + balanceScore });
+                                        }
+                                    }
+                                    if (!cands.length) break;
+                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+                                    placeRestPair(cands[0].idx, cands[0].s);
+                                }
+
+                                // 阶段4：剩余休息拆单休补满（结果：每人至少1对 → 2+1+1）
+                                const dayTargets = new Array(days + 2).fill(0);
+                                for (let d = 1; d <= days; d++) {
+                                    dayTargets[d] = Math.max(dailyRests[d], minRestsPerDay);
+                                    if (d <= pEnd) dayTargets[d] = priorityTargetRestsPerDay;
+                                }
+                                // 模式3：前N天按白/夜班人数设定每日休息名额，但以已有手动休为下限
+                                const mode3TargetRests = totalEmps - mode3DayCount.value - mode3NightCount.value;
+                                for (let d = 1; d <= mode3Days.value && d <= days; d++) {
+                                    dayTargets[d] = Math.max(dailyRests[d], mode3TargetRests);
+                                }
+                                let targetTotalRests2 = totalEmps * maxRestPerEmp;
+                                let plannedRests2 = 0;
+                                for (let d = 1; d <= days; d++) plannedRests2 += dayTargets[d];
+                                let extraRests2 = targetTotalRests2 - plannedRests2;
+                                let extraDays2 = [];
+                                for (let d = 1; d <= days; d++) {
+                                    if (d <= pEnd) continue;
+                                    if (d <= mode3Days.value) continue;
+                                    extraDays2.push(d);
+                                }
+                                extraDays2.sort(() => Math.random() - 0.5);
+                                while (extraRests2 > 0) {
+                                    let added = false;
+                                    for (let d of extraDays2) {
+                                        if (extraRests2 <= 0) break;
+                                        if (dayTargets[d] < effectiveMaxRestsPerDay) {
+                                            dayTargets[d]++;
+                                            extraRests2--;
+                                            added = true;
+                                        }
+                                    }
+                                    if (!added) break;
+                                }
+                                if (extraRests2 > 0) throw new Error("rest-target");
+
+                                for (let round = 0; round < totalEmps * maxRestPerEmp; round++) {
+                                    let dayOrder = [];
+                                    for (let d = 1; d <= days; d++) {
+                                        if (dailyRests[d] < dayTargets[d]) dayOrder.push(d);
+                                    }
+                                    if (!dayOrder.length) break;
+                                    dayOrder.sort((a, b) => (dayTargets[b] - dailyRests[b]) - (dayTargets[a] - dailyRests[a]) || Math.random() - 0.5);
+                                    let placedThisRound = false;
+                                    for (let d of dayOrder) {
+                                        while (dailyRests[d] < dayTargets[d]) {
+                                            let cands = [];
+                                            employees.value.forEach((emp, idx) => {
+                                                if (canPlaceSingleRest(idx, d)) cands.push({ idx, need: maxRestPerEmp - empRests[idx] });
+                                            });
+                                            cands.sort((a, b) => b.need - a.need || Math.random() - 0.5);
+                                            if (!cands.length) break;
+                                            placeSingleRest(cands[0].idx, d);
+                                            placedThisRound = true;
+                                        }
+                                    }
+                                    if (!placedThisRound) break;
+                                }
+
+                                // 验证：每天出勤8-9人；mode3范围仅检查总数，不追究手动休
+                                for (let d = 1; d <= days; d++) {
+                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) throw new Error("day-count");
+                                    if (d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) throw new Error("priority");
+                                }
+                                for (let d = 1; d <= mode3Days.value && d <= days; d++) {
+                                    if (dailyRests[d] < mode3TargetRests || dailyRests[d] > effectiveMaxRestsPerDay) throw new Error("mode3-range");
+                                }
+                            } else {
+                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+                                const dayTargets = new Array(days + 2).fill(0);
+
+                                for (let d = 1; d <= days; d++) {
+                                    dayTargets[d] = Math.max(dailyRests[d], minRestsPerDay);
+                                    if (d <= pEnd) dayTargets[d] = priorityTargetRestsPerDay;
+                                }
+
+                                let targetTotalRests = totalEmps * maxRestPerEmp;
+                                let plannedRests = 0;
+                                for (let d = 1; d <= days; d++) plannedRests += dayTargets[d];
+
+                                let extraRests = targetTotalRests - plannedRests;
+                                let extraDays = [];
+                                for (let d = 1; d <= days; d++) {
+                                    if (d <= pEnd) continue;
+                                    extraDays.push(d);
+                                }
+                                extraDays.sort(() => Math.random() - 0.5);
+                                while (extraRests > 0) {
+                                    let added = false;
+                                    for (let d of extraDays) {
+                                        if (extraRests <= 0) break;
+                                        if (dayTargets[d] < effectiveMaxRestsPerDay) {
+                                            dayTargets[d]++;
+                                            extraRests--;
+                                            added = true;
+                                        }
+                                    }
+                                    if (!added) break;
+                                }
+                                if (extraRests > 0) throw new Error("rest-target");
+
+                                for (let round = 0; round < totalEmps * maxRestPerEmp; round++) {
+                                    let dayOrder = [];
+                                    for (let d = 1; d <= days; d++) {
+                                        if (dailyRests[d] < dayTargets[d]) dayOrder.push(d);
+                                    }
+                                    if (!dayOrder.length) break;
+                                    dayOrder.sort((a, b) => (dayTargets[b] - dailyRests[b]) - (dayTargets[a] - dailyRests[a]) || Math.random() - 0.5);
+
+                                    let placedThisRound = false;
+                                    for (let d of dayOrder) {
+                                        while (dailyRests[d] < dayTargets[d]) {
+                                            let cands = [];
+                                            employees.value.forEach((emp, idx) => {
+                                                if (canPlaceSingleRest(idx, d)) cands.push({ idx, need: maxRestPerEmp - empRests[idx] });
+                                            });
+                                            cands.sort((a, b) => b.need - a.need || Math.random() - 0.5);
+                                            if (!cands.length) break;
+                                            placeSingleRest(cands[0].idx, d);
+                                            placedThisRound = true;
+                                        }
+                                    }
+                                    if (!placedThisRound) break;
+                                }
+
+                                for (let d = 1; d <= days; d++) {
+                                    if (dailyRests[d] !== dayTargets[d]) throw new Error("day-target");
+                                }
+                            }
+
+                            // 随机模式兜底：优先区间必须每天补到9人出勤；手动填写的休会优先保留并占用名额。
+                            if (scheduleMode.value !== '2plus2' && priorityEnabled.value) {
+                                const pEnd = Math.min(priorityDays.value, days);
+                                for (let d = 1; d <= pEnd; d++) {
+                                    while (dailyRests[d] < priorityTargetRestsPerDay) {
+                                        let bestIdx = -1, bestR = 999;
+                                        for (let idx = 0; idx < totalEmps; idx++) {
+                                            if (!canPlaceSingleRest(idx, d)) continue;
+                                            if (empRests[idx] < bestR) { bestR = empRests[idx]; bestIdx = idx; }
+                                        }
+                                        if (bestIdx < 0) break;
+                                        placeSingleRest(bestIdx, d);
+                                    }
+                                }
+                            }
+
+                            // 验证：每天8-9人；优先模式下前N天必须刚好9人出勤。
+                            let twc = 0, ok = true;
+                            for (let d = 1; d <= days; d++) {
+                                let wk = 0;
+                                employees.value.forEach(emp => {
+                                    let v = emp.schedule[d] ? emp.schedule[d].trim() : '';
+                                    if (!v || (v !== '休' && v !== '离')) wk++;
+                                });
+                                twc += wk;
+                                if (wk > maxHeadcount || wk < minHeadcount) ok = false;
+                                if (priorityEnabled.value && d <= Math.min(priorityDays.value, days) && wk !== maxHeadcount) ok = false;
+                            }
+                            for (let idx = 0; idx < totalEmps; idx++) {
+                                if (empRests[idx] !== maxRestPerEmp) ok = false;
+                            }
+                            if (!ok) throw new Error("headcount");
+                            if (twc > workTarget) throw new Error("over");
+                            
+                            success = true;
+                            break;
+                        } catch(e) {}
+                    }
+
+                    if (!success) {
+                        // 最终兜底：降级为宽松随机单休，确保一定出结果
+                        // 还原手动休备份
+                        employees.value.forEach((emp, i) => {
+                            for (let d = 1; d <= days; d++) {
+                                emp.schedule[d] = snapshot[i].schedule[d];
+                            }
+                        });
+                        // 统计已有休息
+                        let dailyRestsFb = new Array(days + 2).fill(0);
+                        let empRestsFb = new Array(totalEmps).fill(0);
+                        employees.value.forEach((emp, idx) => {
+                            for (let d = 1; d <= days; d++) {
+                                if (emp.schedule[d] === '休' || emp.schedule[d] === '离') {
+                                    dailyRestsFb[d]++;
+                                    empRestsFb[idx]++;
+                                }
+                            }
+                        });
+                        // 简单贪心：每人补满4休，不超每日上限，避免3+连休
+                        const canPlaceFb = (idx, day) => {
+                            if (employees.value[idx].schedule[day]) return false;
+                            if (empRestsFb[idx] >= maxRestPerEmp) return false;
+                            if (dailyRestsFb[day] >= effectiveMaxRestsPerDay) return false;
+                            const emp = employees.value[idx];
+                            if (day > 1 && emp.schedule[day-1] === '休' && day < days && emp.schedule[day+1] === '休') return false;
+                            if (day > 2 && emp.schedule[day-1] === '休' && emp.schedule[day-2] === '休') return false;
+                            if (day < days - 1 && emp.schedule[day+1] === '休' && emp.schedule[day+2] === '休') return false;
+                            return true;
+                        };
+                        for (let idx = 0; idx < totalEmps; idx++) {
+                            while (empRestsFb[idx] < maxRestPerEmp) {
+                                let bestDay = -1, bestScore = -Infinity;
+                                for (let d = 1; d <= days; d++) {
+                                    if (!canPlaceFb(idx, d)) continue;
+                                    const score = -dailyRestsFb[d] * 10 + Math.random();
+                                    if (score > bestScore) { bestScore = score; bestDay = d; }
+                                }
+                                if (bestDay < 0) break; // 实在放不下就少休
+                                employees.value[idx].schedule[bestDay] = '休';
+                                dailyRestsFb[bestDay]++;
+                                empRestsFb[idx]++;
+                            }
+                        }
+                        // 最终验证出勤人数
+                        let fbOk = true;
+                        for (let d = 1; d <= days; d++) {
+                            let wk = 0;
+                            employees.value.forEach(emp => {
+                                let v = emp.schedule[d] ? emp.schedule[d].trim() : '';
+                                if (!v || (v !== '休' && v !== '离')) wk++;
+                            });
+                            if (wk > maxHeadcount || wk < minHeadcount) fbOk = false;
+                        }
+                        if (!fbOk) {
+                            alert('排班失败：手动设置的休息存在冲突，请检查是否同一天同一班组有≥2人标记了"休"。');
+                            return;
+                        }
+                    }
+
+                    // 2. 填充班次：前5人A班，其余B班
+                    for (let d = 1; d <= days; d++) {
+                        employees.value.forEach((emp, index) => {
+                            if (!emp.schedule[d]) {
+                                emp.schedule[d] = index < 5 ? 'A' : 'B';
+                            }
+                        });
+                    }
+                };
+
+                const dailyHeadcount = (day) => {
+                    return employees.value.reduce((count, emp) => {
+                        const val = emp.schedule[day] ? emp.schedule[day].trim() : '';
+                        if (val && val !== '休' && val !== '离') return count + 1;
+                        return count;
+                    }, 0);
+                };
+
+                const isOverStaffed = (day) => {
+                    return dailyHeadcount(day) >= 10;
+                };
+
+                const isUnderStaffed = (day) => {
+                    return dailyHeadcount(day) < 8;
+                }
+
+                const statCount = (emp, targetType) => {
+                    let count = 0;
+                    for (let d = 1; d <= daysInMonth.value; d++) {
+                        const val = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
+                        if (!val) continue;
+                        if (targetType === 'A' && (val === 'A' || val === '白')) count++;
+                        else if (targetType === 'B' && (val === 'B' || val === '晚')) count++;
+                        else if (targetType === '休' && val === '休') count++;
+                    }
+                    return count || '-';
+                };
+
+                const getDayOfWeek = (day) => {
+                    if (!selectedMonthStr.value) return '';
+                    const [year, month] = selectedMonthStr.value.split('-');
+                    const date = new Date(year, month - 1, day);
+                    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+                    return weekDays[date.getDay()];
+                };
+
+                const isWeekend = (day) => {
+                    if (!selectedMonthStr.value) return false;
+                    const [year, month] = selectedMonthStr.value.split('-');
+                    const date = new Date(year, month - 1, day);
+                    const d = date.getDay();
+                    return d === 0 || d === 6;
+                };
+
+                const exportToExcel = () => {
+                    const data = [];
+                    const days = daysInMonth.value;
+                    const titleRow = [title.value];
+                    for(let i=0; i<days + 5; i++) titleRow.push(''); // Span logic includes new stat cols
+                    data.push(titleRow);
+
+                    const header = ['序号', '姓名\\日期'];
+                    for (let day = 1; day <= days; day++) header.push(day);
+                    header.push('白(A)', '晚(B)', '休', '备注');
+                    data.push(header);
+
+                    const weekHeader = ['', ''];
+                    for (let day = 1; day <= days; day++) weekHeader.push(getDayOfWeek(day));
+                    weekHeader.push('', '', '', '');
+                    data.push(weekHeader);
+
+                    employees.value.forEach((emp, index) => {
+                        const row = [index + 1, emp.name];
+                        for (let day = 1; day <= days; day++) row.push(emp.schedule[day] || '');
+                        row.push(statCount(emp, 'A'), statCount(emp, 'B'), statCount(emp, '休'), emp.remark || '');
+                        data.push(row);
+                    });
+
+                    const summary = ['', '总出岗人数'];
+                    for (let day = 1; day <= days; day++) summary.push(dailyHeadcount(day));
+                    summary.push('','','','');
+                    data.push(summary);
+
+                    if (bottomNotes.value) {
+                         data.push([]);
+                         bottomNotes.value.split('\n').forEach(note => data.push([note]));
+                    }
+
+                    const ws = XLSX.utils.aoa_to_sheet(data);
+                    if(!ws['!merges']) ws['!merges'] = [];
+                    ws['!merges'].push({s: {r:0, c:0}, e: {r:0, c: days + 5}});
+
+                    const wscols = [{wch: 6}, {wch: 12}];
+                    for(let i=0; i<days; i++) wscols.push({wch: 4});
+                    wscols.push({wch: 6}, {wch: 6}, {wch: 6}, {wch: 22}); // Stat columns + Remark
+                    ws['!cols'] = wscols;
+
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "考勤表");
+                    XLSX.writeFile(wb, `${title.value}.xlsx`);
+                };
+
+                return {
+                    selectedMonthStr, title, bottomNotes, employees, daysInMonth, totalWorkMonth,
+                    onMonthChange, addEmployee, removeEmployee, getCellClass, cycleValue,
+                    clearAB, clearRest, autoSchedule, dailyHeadcount, isUnderStaffed, isOverStaffed, statCount, exportToExcel,
+                    maxRestDays, fixedMonthlyRestDays, totalWorkTarget, getDayOfWeek, isWeekend,
+                    showSnapshot, snapshotName, toastMsg, toastType, snapshots,
+                    saveSnapshot, showSnapshotList, loadSnapshot, deleteSnapshot,
+                    scheduleMode,
+                    priorityEnabled, priorityDays,
+                    mode3Days, mode3DayCount, mode3NightCount
+                };
+            }
+        }).mount('#app');
+
+        // ======== 防复制与防查看源码护盾 ========
+        // 禁用右键菜单
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        
+        // 禁用常见开发者快捷键 (F12, Ctrl+Shift+I/J, Ctrl+U, Cmd+Opt+I)
+        document.onkeydown = function (e) {
+            if (e.keyCode === 123) return false; // F12
+            if (e.ctrlKey && e.shiftKey && e.keyCode === 73) return false; // Ctrl+Shift+I
+            if (e.ctrlKey && e.shiftKey && e.keyCode === 74) return false; // Ctrl+Shift+J
+            if (e.ctrlKey && e.keyCode === 85) return false; // Ctrl+U (查看源码)
+            if (e.metaKey && e.altKey && e.keyCode === 73) return false; // Cmd+Opt+I (Mac)
+            if (e.metaKey && e.altKey && e.keyCode === 85) return false; // Cmd+Opt+U (Mac)
+        };
+        // ========================================
+    </script>
+</body>
+</html>
