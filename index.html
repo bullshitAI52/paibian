@@ -287,6 +287,64 @@
         @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
 
+
+        /* Plan selector */
+        .plan-selector {
+            display: flex; gap: 10px; margin: 16px 0 20px;
+            flex-wrap: wrap; align-items: stretch;
+        }
+        .plan-card {
+            padding: 14px 18px; border: 2px solid var(--border-color);
+            border-radius: 10px; cursor: pointer;
+            transition: all 0.25s ease;
+            background: var(--card-bg); text-align: center;
+            min-width: 110px; flex: 1; position: relative; overflow: hidden;
+        }
+        .plan-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), #3B82F6);
+            transform: scaleX(0); transition: transform 0.3s ease;
+        }
+        .plan-card.active::before { transform: scaleX(1); }
+        .plan-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(79,70,229,0.12);
+        }
+        .plan-card.active {
+            border-color: var(--primary);
+            background: var(--primary-light);
+            box-shadow: 0 4px 12px rgba(79,70,229,0.2);
+        }
+        .plan-card .plan-num {
+            font-weight: 700; font-size: 15px; color: var(--primary); margin-bottom: 6px;
+        }
+        .plan-card .plan-stat {
+            color: var(--text-muted); font-size: 12px; line-height: 1.6;
+        }
+        .plan-card .plan-badge {
+            display: inline-block;
+            background: var(--primary); color: white;
+            font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-top: 6px;
+        }
+        /* Slot machine animation */
+        @keyframes slotFlash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .slot-spinning .cell-input {
+            animation: slotFlash 0.08s ease-in-out infinite;
+        }
+        .slot-settle {
+            animation: slotSettle 0.35s ease-out;
+        }
+        @keyframes slotSettle {
+            0% { transform: scaleY(0.5); opacity: 0.4; }
+            50% { transform: scaleY(1.15); }
+            100% { transform: scaleY(1); opacity: 1; }
+        }
+
     </style>
 </head>
 <body>
@@ -414,6 +472,18 @@
             </table>
         </div>
 
+        <!-- Plan selector -->
+        <div v-if="showPlanSelector" class="plan-selector">
+            <div v-for="(plan, pIdx) in generatedPlans" :key="pIdx"
+                 class="plan-card" :class="{ active: selectedPlanIndex === pIdx }"
+                 @click="switchPlan(pIdx)">
+                <div class="plan-num">方案{{ pIdx + 1 }}</div>
+                <div class="plan-stat">总工: {{ planStats[pIdx]?.totalWork || '-' }}</div>
+                <div class="plan-stat">日均: {{ planStats[pIdx]?.avgHeadcount || '-' }}人</div>
+                <span class="plan-badge" v-if="selectedPlanIndex === pIdx">当前</span>
+            </div>
+        </div>
+
         <textarea class="footer-notes" v-model="bottomNotes" placeholder="填写说明内容..."></textarea>
 
         <!-- Snapshot Modal -->
@@ -479,6 +549,11 @@
                 const toastMsg = ref('');
                 const toastType = ref('toast-success');
                 const snapshots = ref([]);
+                const generatedPlans = ref([]);
+                const showPlanSelector = ref(false);
+                const selectedPlanIndex = ref(0);
+                const isAnimating = ref(false);
+
 
                 const loadSnapshotsFromStorage = async () => {
                     try {
@@ -617,6 +692,23 @@
                     }
                     return total;
                 });
+                const planStats = computed(() => {
+                    return generatedPlans.value.map(plan => {
+                        let totalWork = 0;
+                        const days = daysInMonth.value;
+                        for (let d = 1; d <= days; d++) {
+                            let count = 0;
+                            plan.forEach(emp => {
+                                const val = emp.schedule[d] ? emp.schedule[d].trim() : '';
+                                if (val && val !== '休' && val !== '离') count++;
+                            });
+                            totalWork += count;
+                        }
+                        const avg = days > 0 ? (totalWork / days).toFixed(1) : '-';
+                        return { totalWork, avgHeadcount: avg };
+                    });
+                });
+
 
                 const onMonthChange = () => {
                     if(!selectedMonthStr.value) return;
@@ -677,10 +769,10 @@
                     });
                 };
 
-                const autoSchedule = () => {
+                // ===== Core scheduling algorithm =====
+                const runScheduleCore = () => {
                     const days = daysInMonth.value;
                     const totalEmps = employees.value.length;
-                    const workTarget = totalWorkTarget.value;
                     const minHeadcount = 8;
                     const maxHeadcount = 9;
                     const minRestsPerDay = Math.max(0, totalEmps - maxHeadcount);
@@ -688,64 +780,35 @@
                     const effectiveMaxRestsPerDay = Math.min(maxRestsPerDay, 2);
                     const priorityTargetRestsPerDay = minRestsPerDay;
                     const targetRestDays = fixedMonthlyRestDays;
-                    
-                    if (totalEmps < minHeadcount) {
-                        alert(`排班失败：当前只有${totalEmps}人，无法满足每天至少${minHeadcount}人在岗。`);
-                        return;
-                    }
-                    if (minRestsPerDay > effectiveMaxRestsPerDay) {
-                        alert('排班失败：按“同一天白班/晚班各最多1人休”的规则，当前人数无法满足每天8-9人在岗。');
-                        return;
-                    }
-                    
-                    const maxPossibleWork = totalEmps * days;
-                    const minRequiredRests = Math.max(0, maxPossibleWork - workTarget);
-                    
-                    // 优先保证每个人达到期望的休息天数 (默认4天)
-                    const desiredRests = totalEmps * targetRestDays;
-                    
-                    // 总休息天数：取 "不超总工所需休息数" 和 "全员达到期望休息数" 的最大值
-                    const restBudget = Math.max(minRequiredRests, desiredRests, minRestsPerDay * days);
-
-                    // 验证工上限是否可达成：每人固定休 targetRestDays 天
-                    const minPossibleWork = totalEmps * days - totalEmps * targetRestDays;
-                    if (workTarget < minPossibleWork) {
-                        alert(`排班失败：每人固定休${targetRestDays}天，${totalEmps}人×${days}天 最少需出勤 ${minPossibleWork} 个工。\n当前月工上限 ${workTarget} 过低，无法达成。请将月工上限调至 ${minPossibleWork} 以上。`);
-                        return;
-                    }
-
-                    // 每人休息天数使用硬上限，避免为了补每天人数把某个人排成5休。
                     const maxRestPerEmp = targetRestDays;
 
-                    // 1. 备份当前手动设置
                     const snapshot = employees.value.map((emp, empIdx) => {
                         const cloneSch = {};
                         for (let d = 1; d <= 31; d++) {
                             const val = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
-                            cloneSch[d] = (val === 'A' || val === 'B' || val === '白' || val === '晚') ? '' : emp.schedule[d];
+                            cloneSch[d] = (val === 'A' || val === 'B' || val === '\u767d' || val === '\u665a') ? '' : emp.schedule[d];
                         }
                         return { id: emp.id, schedule: cloneSch };
                     });
 
                     let success = false;
-                    const MAX_RETRIES = 80;
-                    
+                    const MAX_RETRIES = 120;
+
                     for (let retry = 0; retry < MAX_RETRIES; retry++) {
                         employees.value.forEach((emp, i) => {
                             for (let d = 1; d <= days; d++) {
                                 emp.schedule[d] = snapshot[i].schedule[d];
                             }
                         });
-                        
+
                         try {
-                            // 统计已有的休息
                             let dailyRests = new Array(days + 2).fill(0);
                             let assigned = 0;
                             let empRests = new Array(totalEmps).fill(0);
-                            
+
                             employees.value.forEach((emp, idx) => {
                                 for (let d = 1; d <= days; d++) {
-                                    if (emp.schedule[d] === '休' || emp.schedule[d] === '离') {
+                                    if (emp.schedule[d] === '\u4f11' || emp.schedule[d] === '\u79bb') {
                                         dailyRests[d]++;
                                         assigned++;
                                         empRests[idx]++;
@@ -771,7 +834,7 @@
                             const getGroupRests = (day) => {
                                 let aR = 0, bR = 0;
                                 employees.value.forEach((e, i2) => {
-                                    if (e.schedule[day] === '休' || e.schedule[day] === '离') {
+                                    if (e.schedule[day] === '\u4f11' || e.schedule[day] === '\u79bb') {
                                         if (i2 < 5) aR++; else bR++;
                                     }
                                 });
@@ -783,19 +846,16 @@
                                 if (emp.schedule[day]) return false;
                                 if (empRests[idx] >= maxRestPerEmp) return false;
                                 if (dailyRests[day] >= effectiveMaxRestsPerDay) return false;
-                                // 优先模式：前N天按9人出勤计算休息名额，手填休优先占用。
                                 if (priorityEnabled.value && day <= Math.min(priorityDays.value, days) && dailyRests[day] >= priorityTargetRestsPerDay) return false;
-                                if (day > 1 && emp.schedule[day-1] === '休' && day < days && emp.schedule[day+1] === '休') return false;
-                                if (day > 2 && emp.schedule[day-1] === '休' && emp.schedule[day-2] === '休') return false;
-                                if (day < days - 1 && emp.schedule[day+1] === '休' && emp.schedule[day+2] === '休') return false;
+                                if (day > 1 && emp.schedule[day-1] === '\u4f11' && day < days && emp.schedule[day+1] === '\u4f11') return false;
+                                if (day > 2 && emp.schedule[day-1] === '\u4f11' && emp.schedule[day-2] === '\u4f11') return false;
+                                if (day < days - 1 && emp.schedule[day+1] === '\u4f11' && emp.schedule[day+2] === '\u4f11') return false;
                                 const { aR, bR } = getGroupRests(day);
-                                // 模式3：前N天动态调整各组最多可休人数（手动休已计入aR/bR）
                                 const inMode3Range = scheduleMode.value === '2plus2first' && day <= mode3Days.value;
                                 const maxDayGroupRest = inMode3Range ? Math.max(0, 5 - mode3DayCount.value) : 1;
                                 const maxNightGroupRest = inMode3Range ? Math.max(0, 5 - mode3NightCount.value) : 1;
                                 if (idx < 5 && aR >= maxDayGroupRest) return false;
                                 if (idx >= 5 && bR >= maxNightGroupRest) return false;
-                                // 模式3：前mode3DayCount个白班人员在范围内不可新增休息
                                 if (inMode3Range && idx < mode3DayCount.value) return false;
                                 return true;
                             };
@@ -806,11 +866,10 @@
                                 if (empRests[idx] + 2 > maxRestPerEmp) return false;
                                 if (emp.schedule[startDay] || emp.schedule[startDay + 1]) return false;
                                 if (dailyRests[startDay] >= effectiveMaxRestsPerDay || dailyRests[startDay + 1] >= effectiveMaxRestsPerDay) return false;
-                                // 优先模式：前N天按9人出勤计算休息名额，手填休优先占用。
                                 const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
                                 if (pEnd > 0 && ((startDay <= pEnd && dailyRests[startDay] >= priorityTargetRestsPerDay) || (startDay + 1 <= pEnd && dailyRests[startDay + 1] >= priorityTargetRestsPerDay))) return false;
-                                if (startDay > 1 && emp.schedule[startDay - 1] === '休') return false;
-                                if (startDay + 2 <= days && emp.schedule[startDay + 2] === '休') return false;
+                                if (startDay > 1 && emp.schedule[startDay - 1] === '\u4f11') return false;
+                                if (startDay + 2 <= days && emp.schedule[startDay + 2] === '\u4f11') return false;
                                 const g1 = getGroupRests(startDay);
                                 const g2 = getGroupRests(startDay + 1);
                                 const inM3Day1 = scheduleMode.value === '2plus2first' && startDay <= mode3Days.value;
@@ -821,7 +880,6 @@
                                 const maxNR2 = inM3Day2 ? Math.max(0, 5 - mode3NightCount.value) : 1;
                                 if (idx < 5 && (g1.aR >= maxDR1 || g2.aR >= maxDR2)) return false;
                                 if (idx >= 5 && (g1.bR >= maxNR1 || g2.bR >= maxNR2)) return false;
-                                // 模式3：前mode3DayCount个白班人员不可连休
                                 if (scheduleMode.value === '2plus2first' && idx < mode3DayCount.value) {
                                     if (startDay <= mode3Days.value || startDay + 1 <= mode3Days.value) return false;
                                 }
@@ -829,7 +887,7 @@
                             };
 
                             const placeSingleRest = (idx, day) => {
-                                employees.value[idx].schedule[day] = '休';
+                                employees.value[idx].schedule[day] = '\u4f11';
                                 dailyRests[day]++;
                                 empRests[idx]++;
                             };
@@ -843,7 +901,7 @@
                                 const starts = [];
                                 const emp = employees.value[idx];
                                 for (let d = 1; d < days; d++) {
-                                    if (emp.schedule[d] === '休' && emp.schedule[d + 1] === '休') {
+                                    if (emp.schedule[d] === '\u4f11' && emp.schedule[d + 1] === '\u4f11') {
                                         starts.push(d);
                                         d++;
                                     }
@@ -854,15 +912,15 @@
                             const pairSpacingOk = (idx, startDay) => {
                                 const starts = getPairStarts(idx);
                                 if (!starts.length) return true;
-                                return starts.every(oldStart => Math.abs(startDay - oldStart) >= 10);
+                                return starts.every(oldStart => Math.abs(startDay - oldStart) >= 7);
                             };
 
                             const completeSingleRestPair = (idx) => {
                                 const emp = employees.value[idx];
                                 let candidates = [];
                                 for (let d = 1; d <= days; d++) {
-                                    if (emp.schedule[d] !== '休') continue;
-                                    if (emp.schedule[d - 1] === '休' || emp.schedule[d + 1] === '休') continue;
+                                    if (emp.schedule[d] !== '\u4f11') continue;
+                                    if (emp.schedule[d - 1] === '\u4f11' || emp.schedule[d + 1] === '\u4f11') continue;
                                     if (d > 1 && canPlaceSingleRest(idx, d - 1) && pairSpacingOk(idx, d - 1)) candidates.push(d - 1);
                                     if (d < days && canPlaceSingleRest(idx, d + 1) && pairSpacingOk(idx, d)) candidates.push(d + 1);
                                 }
@@ -875,78 +933,80 @@
                             if (scheduleMode.value === '2plus2') {
                                 const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
 
-                                for (let round = 0; round < totalEmps * 2; round++) {
-                                    let cands = [];
-                                    for (let idx = 0; idx < totalEmps; idx++) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        if (empRests[idx] % 2 !== 0) throw new Error("2plus2-single");
-                                        for (let s = 1; s < days; s++) {
-                                            if (!canPlaceRestPair(idx, s)) continue;
-                                            if (!pairSpacingOk(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
-                                            const priorityScore = (s <= pEnd && dailyRests[s] === 0 ? 15 : 0) + (s + 1 <= pEnd && dailyRests[s + 1] === 0 ? 15 : 0);
-                                            const empNeed = maxRestPerEmp - empRests[idx];
-                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
-                                            cands.push({ idx, s, score: coverScore + priorityScore + empNeed + balanceScore });
-                                        }
+                                // Phase 1: 2+2 — round-robin: first pair early, second pair late
+                                let progress1;
+                                do {
+                                    progress1 = false;
+                                    // Round 1a: first pair — prefer first half of month
+                                    const order1 = Array.from({length: totalEmps}, (_, i) => i);
+                                    for (let i = order1.length - 1; i > 0; i--) {
+                                        const j = Math.floor(Math.random() * (i + 1));
+                                        [order1[i], order1[j]] = [order1[j], order1[i]];
                                     }
-                                    if (!cands.length) break;
-                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
-                                    placeRestPair(cands[0].idx, cands[0].s);
-                                }
-
-                                let missingPairs = false;
-                                for (let idx = 0; idx < totalEmps; idx++) {
-                                    if (empRests[idx] !== maxRestPerEmp || getPairStarts(idx).length !== 2) missingPairs = true;
-                                }
-                                for (let d = 1; d <= days; d++) {
-                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) missingPairs = true;
-                                    if (d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) missingPairs = true;
-                                }
-                                if (missingPairs) throw new Error("2plus2");
-                            } else if (scheduleMode.value === '2plus2first') {
-                                // 先2+2后随机模式：严格2+2 → 确保每人≥1对 → 拆2+1+1
-                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
-
-                                // 阶段1：严格间距的2天连休对（连休对间隔≥10天），追求2+2
-                                for (let round = 0; round < totalEmps * 2; round++) {
-                                    let cands = [];
-                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                    for (const idx of order1) {
                                         if (empRests[idx] >= maxRestPerEmp) continue;
                                         if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        if (empRests[idx] % 2 !== 0) continue;
-                                        for (let s = 1; s < days; s++) {
+                                        if (getPairStarts(idx).length > 0) continue;
+                                        let bestS = -1, bestScore = -Infinity;
+                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
+                                        for (let i = sOrder.length - 1; i > 0; i--) {
+                                            const j = Math.floor(Math.random() * (i + 1));
+                                            [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
+                                        }
+                                        for (const s of sOrder) {
                                             if (!canPlaceRestPair(idx, s)) continue;
-                                            if (!pairSpacingOk(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
-                                            const mode3Cover = ((s <= mode3Days.value && dailyRests[s] === 0) ? 25 : 0) + ((s + 1 <= mode3Days.value && dailyRests[s + 1] === 0) ? 25 : 0);
-                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
-                                            cands.push({ idx, s, score: coverScore + mode3Cover + balanceScore });
+                                            const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
+                                            const earlyBias = -s * 0.6;
+                                            const score = coverScore + earlyBias + Math.random() * 4;
+                                            if (score > bestScore) { bestScore = score; bestS = s; }
+                                        }
+                                        if (bestS >= 0) {
+                                            placeRestPair(idx, bestS);
+                                            progress1 = true;
                                         }
                                     }
-                                    if (!cands.length) break;
-                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
-                                    placeRestPair(cands[0].idx, cands[0].s);
-                                }
+                                    // Round 1b: second pair — prefer second half of month
+                                    const order2 = Array.from({length: totalEmps}, (_, i) => i);
+                                    for (let i = order2.length - 1; i > 0; i--) {
+                                        const j = Math.floor(Math.random() * (i + 1));
+                                        [order2[i], order2[j]] = [order2[j], order2[i]];
+                                    }
+                                    for (const idx of order2) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                        let bestS = -1, bestScore = -Infinity;
+                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
+                                        for (let i = sOrder.length - 1; i > 0; i--) {
+                                            const j = Math.floor(Math.random() * (i + 1));
+                                            [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
+                                        }
+                                        for (const s of sOrder) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            if (!pairSpacingOk(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
+                                            const lateBias = s * 0.6;
+                                            const score = coverScore + lateBias + Math.random() * 4;
+                                            if (score > bestScore) { bestScore = score; bestS = s; }
+                                        }
+                                        if (bestS >= 0) {
+                                            placeRestPair(idx, bestS);
+                                            progress1 = true;
+                                        }
+                                    }
+                                } while (progress1);
 
-                                // 统计阶段1后每人已有几对
-                                const pairCount = (idx) => getPairStarts(idx).length;
-                                const empNeed = (idx) => maxRestPerEmp - empRests[idx];
-
-                                // 阶段2：对0对的人，优先确保拿到至少1对连休（放宽间距）
+                                // Phase 2: For those without a pair, give at least 1 pair → 2+1+1
                                 for (let round = 0; round < totalEmps; round++) {
                                     let cands = [];
                                     for (let idx = 0; idx < totalEmps; idx++) {
                                         if (empRests[idx] >= maxRestPerEmp) continue;
                                         if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        if (pairCount(idx) >= 1) continue; // 已有≥1对，不抢
+                                        if (getPairStarts(idx).length > 0) continue;
                                         for (let s = 1; s < days; s++) {
                                             if (!canPlaceRestPair(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
-                                            const mode3Cover = ((s <= mode3Days.value && dailyRests[s] === 0) ? 25 : 0) + ((s + 1 <= mode3Days.value && dailyRests[s + 1] === 0) ? 25 : 0);
-                                            const needBonus = empNeed(idx) * 3;
-                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
-                                            cands.push({ idx, s, score: coverScore + mode3Cover + needBonus + balanceScore });
+                                            const coverScore = (dailyRests[s] === 0 ? 15 : 0) + (dailyRests[s + 1] === 0 ? 15 : 0);
+                                            const needScore = (maxRestPerEmp - empRests[idx]) * 5;
+                                            cands.push({ idx, s, score: coverScore + needScore - dailyRests[s] - dailyRests[s + 1] });
                                         }
                                     }
                                     if (!cands.length) break;
@@ -954,255 +1014,218 @@
                                     placeRestPair(cands[0].idx, cands[0].s);
                                 }
 
-                                // 阶段3：对已有1对的人，尝试补第二对（放宽间距，追求2+2）
-                                for (let round = 0; round < totalEmps; round++) {
-                                    let cands = [];
-                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                // Phase 3: Fill remaining as isolated singles → 1+1+1+1
+                                let filled2;
+                                do {
+                                    filled2 = false;
+                                    const empOrder = Array.from({length: totalEmps}, (_, i) => i);
+                                    for (let i = empOrder.length - 1; i > 0; i--) {
+                                        const j = Math.floor(Math.random() * (i + 1));
+                                        [empOrder[i], empOrder[j]] = [empOrder[j], empOrder[i]];
+                                    }
+                                    for (const idx of empOrder) {
                                         if (empRests[idx] >= maxRestPerEmp) continue;
-                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        if (pairCount(idx) < 1) continue; // 跳过0对的（阶段2已尽力）
-                                        for (let s = 1; s < days; s++) {
-                                            if (!canPlaceRestPair(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 20 : 0) + (dailyRests[s + 1] === 0 ? 20 : 0);
-                                            const balanceScore = -(dailyRests[s] + dailyRests[s + 1]);
-                                            cands.push({ idx, s, score: coverScore + balanceScore });
+                                        let bestDay = -1, bestScore = -Infinity;
+                                        const dayOrder = Array.from({length: days}, (_, di) => di + 1);
+                                        for (let di = dayOrder.length - 1; di > 0; di--) {
+                                            const dj = Math.floor(Math.random() * (di + 1));
+                                            [dayOrder[di], dayOrder[dj]] = [dayOrder[dj], dayOrder[di]];
                                         }
-                                    }
-                                    if (!cands.length) break;
-                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
-                                    placeRestPair(cands[0].idx, cands[0].s);
-                                }
-
-                                // 阶段4：剩余休息拆单休补满（结果：每人至少1对 → 2+1+1）
-                                const dayTargets = new Array(days + 2).fill(0);
-                                for (let d = 1; d <= days; d++) {
-                                    dayTargets[d] = Math.max(dailyRests[d], minRestsPerDay);
-                                    if (d <= pEnd) dayTargets[d] = priorityTargetRestsPerDay;
-                                }
-                                // 模式3：前N天按白/夜班人数设定每日休息名额，但以已有手动休为下限
-                                const mode3TargetRests = totalEmps - mode3DayCount.value - mode3NightCount.value;
-                                for (let d = 1; d <= mode3Days.value && d <= days; d++) {
-                                    dayTargets[d] = Math.max(dailyRests[d], mode3TargetRests);
-                                }
-                                let targetTotalRests2 = totalEmps * maxRestPerEmp;
-                                let plannedRests2 = 0;
-                                for (let d = 1; d <= days; d++) plannedRests2 += dayTargets[d];
-                                let extraRests2 = targetTotalRests2 - plannedRests2;
-                                let extraDays2 = [];
-                                for (let d = 1; d <= days; d++) {
-                                    if (d <= pEnd) continue;
-                                    if (d <= mode3Days.value) continue;
-                                    extraDays2.push(d);
-                                }
-                                extraDays2.sort(() => Math.random() - 0.5);
-                                while (extraRests2 > 0) {
-                                    let added = false;
-                                    for (let d of extraDays2) {
-                                        if (extraRests2 <= 0) break;
-                                        if (dayTargets[d] < effectiveMaxRestsPerDay) {
-                                            dayTargets[d]++;
-                                            extraRests2--;
-                                            added = true;
-                                        }
-                                    }
-                                    if (!added) break;
-                                }
-                                if (extraRests2 > 0) throw new Error("rest-target");
-
-                                for (let round = 0; round < totalEmps * maxRestPerEmp; round++) {
-                                    let dayOrder = [];
-                                    for (let d = 1; d <= days; d++) {
-                                        if (dailyRests[d] < dayTargets[d]) dayOrder.push(d);
-                                    }
-                                    if (!dayOrder.length) break;
-                                    dayOrder.sort((a, b) => (dayTargets[b] - dailyRests[b]) - (dayTargets[a] - dailyRests[a]) || Math.random() - 0.5);
-                                    let placedThisRound = false;
-                                    for (let d of dayOrder) {
-                                        while (dailyRests[d] < dayTargets[d]) {
-                                            let cands = [];
-                                            employees.value.forEach((emp, idx) => {
-                                                if (canPlaceSingleRest(idx, d)) cands.push({ idx, need: maxRestPerEmp - empRests[idx] });
-                                            });
-                                            cands.sort((a, b) => b.need - a.need || Math.random() - 0.5);
-                                            if (!cands.length) break;
-                                            placeSingleRest(cands[0].idx, d);
-                                            placedThisRound = true;
-                                        }
-                                    }
-                                    if (!placedThisRound) break;
-                                }
-
-                                // 验证：每天出勤8-9人；mode3范围仅检查总数，不追究手动休
-                                for (let d = 1; d <= days; d++) {
-                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) throw new Error("day-count");
-                                    if (d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) throw new Error("priority");
-                                }
-                                for (let d = 1; d <= mode3Days.value && d <= days; d++) {
-                                    if (dailyRests[d] < mode3TargetRests || dailyRests[d] > effectiveMaxRestsPerDay) throw new Error("mode3-range");
-                                }
-                            } else {
-                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
-                                const dayTargets = new Array(days + 2).fill(0);
-
-                                for (let d = 1; d <= days; d++) {
-                                    dayTargets[d] = Math.max(dailyRests[d], minRestsPerDay);
-                                    if (d <= pEnd) dayTargets[d] = priorityTargetRestsPerDay;
-                                }
-
-                                let targetTotalRests = totalEmps * maxRestPerEmp;
-                                let plannedRests = 0;
-                                for (let d = 1; d <= days; d++) plannedRests += dayTargets[d];
-
-                                let extraRests = targetTotalRests - plannedRests;
-                                let extraDays = [];
-                                for (let d = 1; d <= days; d++) {
-                                    if (d <= pEnd) continue;
-                                    extraDays.push(d);
-                                }
-                                extraDays.sort(() => Math.random() - 0.5);
-                                while (extraRests > 0) {
-                                    let added = false;
-                                    for (let d of extraDays) {
-                                        if (extraRests <= 0) break;
-                                        if (dayTargets[d] < effectiveMaxRestsPerDay) {
-                                            dayTargets[d]++;
-                                            extraRests--;
-                                            added = true;
-                                        }
-                                    }
-                                    if (!added) break;
-                                }
-                                if (extraRests > 0) throw new Error("rest-target");
-
-                                for (let round = 0; round < totalEmps * maxRestPerEmp; round++) {
-                                    let dayOrder = [];
-                                    for (let d = 1; d <= days; d++) {
-                                        if (dailyRests[d] < dayTargets[d]) dayOrder.push(d);
-                                    }
-                                    if (!dayOrder.length) break;
-                                    dayOrder.sort((a, b) => (dayTargets[b] - dailyRests[b]) - (dayTargets[a] - dailyRests[a]) || Math.random() - 0.5);
-
-                                    let placedThisRound = false;
-                                    for (let d of dayOrder) {
-                                        while (dailyRests[d] < dayTargets[d]) {
-                                            let cands = [];
-                                            employees.value.forEach((emp, idx) => {
-                                                if (canPlaceSingleRest(idx, d)) cands.push({ idx, need: maxRestPerEmp - empRests[idx] });
-                                            });
-                                            cands.sort((a, b) => b.need - a.need || Math.random() - 0.5);
-                                            if (!cands.length) break;
-                                            placeSingleRest(cands[0].idx, d);
-                                            placedThisRound = true;
-                                        }
-                                    }
-                                    if (!placedThisRound) break;
-                                }
-
-                                for (let d = 1; d <= days; d++) {
-                                    if (dailyRests[d] !== dayTargets[d]) throw new Error("day-target");
-                                }
-                            }
-
-                            // 随机模式兜底：优先区间必须每天补到9人出勤；手动填写的休会优先保留并占用名额。
-                            if (scheduleMode.value !== '2plus2' && priorityEnabled.value) {
-                                const pEnd = Math.min(priorityDays.value, days);
-                                for (let d = 1; d <= pEnd; d++) {
-                                    while (dailyRests[d] < priorityTargetRestsPerDay) {
-                                        let bestIdx = -1, bestR = 999;
-                                        for (let idx = 0; idx < totalEmps; idx++) {
+                                        for (const d of dayOrder) {
                                             if (!canPlaceSingleRest(idx, d)) continue;
-                                            if (empRests[idx] < bestR) { bestR = empRests[idx]; bestIdx = idx; }
+                                            const emp = employees.value[idx];
+                                            const wouldPair = (d > 1 && emp.schedule[d - 1] === '\u4f11') || (d < days && emp.schedule[d + 1] === '\u4f11');
+                                            const score = -dailyRests[d] * 10 + (wouldPair ? -20 : 0) + Math.random() * 3;
+                                            if (score > bestScore) { bestScore = score; bestDay = d; }
                                         }
-                                        if (bestIdx < 0) break;
-                                        placeSingleRest(bestIdx, d);
+                                        if (bestDay >= 0) {
+                                            placeSingleRest(idx, bestDay);
+                                            filled2 = true;
+                                        }
                                     }
+                                } while (filled2);
+
+                                let finalOk = true;
+                                for (let idx = 0; idx < totalEmps; idx++) {
+                                    if (empRests[idx] !== maxRestPerEmp) { finalOk = false; }
                                 }
+                                for (let d = 1; d <= days; d++) {
+                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) finalOk = false;
+                                    if (d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) finalOk = false;
+                                }
+                                if (!finalOk) throw new Error("2plus2");
+                            } else if (scheduleMode.value === '2plus2first') {
+                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+
+                                // Phase 1: 2+2 — round-robin: first pair early, second pair late
+                                let progress1;
+                                do {
+                                    progress1 = false;
+                                    // Round 1a: first pair — prefer first half of month
+                                    const order1 = Array.from({length: totalEmps}, (_, i) => i);
+                                    for (let i = order1.length - 1; i > 0; i--) {
+                                        const j = Math.floor(Math.random() * (i + 1));
+                                        [order1[i], order1[j]] = [order1[j], order1[i]];
+                                    }
+                                    for (const idx of order1) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                        if (getPairStarts(idx).length > 0) continue;
+                                        let bestS = -1, bestScore = -Infinity;
+                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
+                                        for (let i = sOrder.length - 1; i > 0; i--) {
+                                            const j = Math.floor(Math.random() * (i + 1));
+                                            [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
+                                        }
+                                        for (const s of sOrder) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
+                                            const priorityScore = (s <= pEnd && dailyRests[s] === 0 ? 15 : 0) + (s + 1 <= pEnd && dailyRests[s + 1] === 0 ? 15 : 0);
+                                            const earlyBias = -s * 0.6;
+                                            const score = coverScore + priorityScore + earlyBias + Math.random() * 4;
+                                            if (score > bestScore) { bestScore = score; bestS = s; }
+                                        }
+                                        if (bestS >= 0) {
+                                            placeRestPair(idx, bestS);
+                                            progress1 = true;
+                                        }
+                                    }
+                                    // Round 1b: second pair — prefer second half of month
+                                    const order2 = Array.from({length: totalEmps}, (_, i) => i);
+                                    for (let i = order2.length - 1; i > 0; i--) {
+                                        const j = Math.floor(Math.random() * (i + 1));
+                                        [order2[i], order2[j]] = [order2[j], order2[i]];
+                                    }
+                                    for (const idx of order2) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                        let bestS = -1, bestScore = -Infinity;
+                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
+                                        for (let i = sOrder.length - 1; i > 0; i--) {
+                                            const j = Math.floor(Math.random() * (i + 1));
+                                            [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
+                                        }
+                                        for (const s of sOrder) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            if (!pairSpacingOk(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
+                                            const priorityScore = (s <= pEnd && dailyRests[s] === 0 ? 15 : 0) + (s + 1 <= pEnd && dailyRests[s + 1] === 0 ? 15 : 0);
+                                            const lateBias = s * 0.6;
+                                            const score = coverScore + priorityScore + lateBias + Math.random() * 4;
+                                            if (score > bestScore) { bestScore = score; bestS = s; }
+                                        }
+                                        if (bestS >= 0) {
+                                            placeRestPair(idx, bestS);
+                                            progress1 = true;
+                                        }
+                                    }
+                                } while (progress1);
+
+                                // Phase 2: For those without a pair, give at least 1 pair → 2+1+1
+                                for (let round = 0; round < totalEmps; round++) {
+                                    let cands = [];
+                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                        if (getPairStarts(idx).length > 0) continue;
+                                        for (let s = 1; s < days; s++) {
+                                            if (!canPlaceRestPair(idx, s)) continue;
+                                            const coverScore = (dailyRests[s] === 0 ? 15 : 0) + (dailyRests[s + 1] === 0 ? 15 : 0);
+                                            const needScore = (maxRestPerEmp - empRests[idx]) * 5;
+                                            cands.push({ idx, s, score: coverScore + needScore - dailyRests[s] - dailyRests[s + 1] });
+                                        }
+                                    }
+                                    if (!cands.length) break;
+                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+                                    placeRestPair(cands[0].idx, cands[0].s);
+                                }
+
+                                // Phase 3: Fill remaining as isolated singles → 1+1+1+1
+                                let filled;
+                                do {
+                                    filled = false;
+                                    const empOrder = Array.from({length: totalEmps}, (_, i) => i);
+                                    for (let i = empOrder.length - 1; i > 0; i--) {
+                                        const j = Math.floor(Math.random() * (i + 1));
+                                        [empOrder[i], empOrder[j]] = [empOrder[j], empOrder[i]];
+                                    }
+                                    for (const idx of empOrder) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        let bestDay = -1, bestScore = -Infinity;
+                                        const dayOrder = Array.from({length: days}, (_, di) => di + 1);
+                                        for (let di = dayOrder.length - 1; di > 0; di--) {
+                                            const dj = Math.floor(Math.random() * (di + 1));
+                                            [dayOrder[di], dayOrder[dj]] = [dayOrder[dj], dayOrder[di]];
+                                        }
+                                        for (const d of dayOrder) {
+                                            if (!canPlaceSingleRest(idx, d)) continue;
+                                            const emp = employees.value[idx];
+                                            const wouldPair = (d > 1 && emp.schedule[d - 1] === '\u4f11') || (d < days && emp.schedule[d + 1] === '\u4f11');
+                                            const score = -dailyRests[d] * 10 + (wouldPair ? -20 : 0) + Math.random() * 3;
+                                            if (score > bestScore) { bestScore = score; bestDay = d; }
+                                        }
+                                        if (bestDay >= 0) {
+                                            placeSingleRest(idx, bestDay);
+                                            filled = true;
+                                        }
+                                    }
+                                } while (filled);
+
+                                let finalOk = true;
+                                for (let idx = 0; idx < totalEmps; idx++) {
+                                    if (empRests[idx] !== maxRestPerEmp) { finalOk = false; }
+                                }
+                                for (let d = 1; d <= days; d++) {
+                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) finalOk = false;
+                                    if (pEnd > 0 && d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) finalOk = false;
+                                }
+                                if (!finalOk) throw new Error("2plus2first-final");
+                                                        } else {
+                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+                                for (let round = 0; round < totalEmps * 4; round++) {
+                                    let cands = [];
+                                    for (let idx = 0; idx < totalEmps; idx++) {
+                                        if (empRests[idx] >= maxRestPerEmp) continue;
+                                        for (let d = 1; d <= days; d++) {
+                                            if (!canPlaceSingleRest(idx, d)) continue;
+                                            const coverScore = dailyRests[d] === 0 ? 50 : 0;
+                                            const priorityScore = (pEnd > 0 && d <= pEnd && dailyRests[d] === 0) ? 40 : 0;
+                                            const needScore = (maxRestPerEmp - empRests[idx]) * 2;
+                                            const balanceScore = -(dailyRests[d]);
+                                            cands.push({ idx, day: d, score: coverScore + priorityScore + needScore + balanceScore });
+                                        }
+                                    }
+                                    if (!cands.length) break;
+                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+                                    placeSingleRest(cands[0].idx, cands[0].day);
+                                }
+                                let finalOk = true;
+                                for (let idx = 0; idx < totalEmps; idx++) {
+                                    if (empRests[idx] < targetRestDays - 1) { finalOk = false; }
+                                }
+                                for (let d = 1; d <= days; d++) {
+                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) finalOk = false;
+                                    if (pEnd > 0 && d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) finalOk = false;
+                                }
+                                if (!finalOk) throw new Error("random");
                             }
 
-                            // 验证：每天8-9人；优先模式下前N天必须刚好9人出勤。
-                            let twc = 0, ok = true;
-                            for (let d = 1; d <= days; d++) {
-                                let wk = 0;
-                                employees.value.forEach(emp => {
-                                    let v = emp.schedule[d] ? emp.schedule[d].trim() : '';
-                                    if (!v || (v !== '休' && v !== '离')) wk++;
-                                });
-                                twc += wk;
-                                if (wk > maxHeadcount || wk < minHeadcount) ok = false;
-                                if (priorityEnabled.value && d <= Math.min(priorityDays.value, days) && wk !== maxHeadcount) ok = false;
-                            }
-                            for (let idx = 0; idx < totalEmps; idx++) {
-                                if (empRests[idx] !== maxRestPerEmp) ok = false;
-                            }
-                            if (!ok) throw new Error("headcount");
-                            if (twc > workTarget) throw new Error("over");
-                            
                             success = true;
                             break;
-                        } catch(e) {}
-                    }
-
-                    if (!success) {
-                        // 最终兜底：降级为宽松随机单休，确保一定出结果
-                        // 还原手动休备份
-                        employees.value.forEach((emp, i) => {
-                            for (let d = 1; d <= days; d++) {
-                                emp.schedule[d] = snapshot[i].schedule[d];
-                            }
-                        });
-                        // 统计已有休息
-                        let dailyRestsFb = new Array(days + 2).fill(0);
-                        let empRestsFb = new Array(totalEmps).fill(0);
-                        employees.value.forEach((emp, idx) => {
-                            for (let d = 1; d <= days; d++) {
-                                if (emp.schedule[d] === '休' || emp.schedule[d] === '离') {
-                                    dailyRestsFb[d]++;
-                                    empRestsFb[idx]++;
-                                }
-                            }
-                        });
-                        // 简单贪心：每人补满4休，不超每日上限，避免3+连休
-                        const canPlaceFb = (idx, day) => {
-                            if (employees.value[idx].schedule[day]) return false;
-                            if (empRestsFb[idx] >= maxRestPerEmp) return false;
-                            if (dailyRestsFb[day] >= effectiveMaxRestsPerDay) return false;
-                            const emp = employees.value[idx];
-                            if (day > 1 && emp.schedule[day-1] === '休' && day < days && emp.schedule[day+1] === '休') return false;
-                            if (day > 2 && emp.schedule[day-1] === '休' && emp.schedule[day-2] === '休') return false;
-                            if (day < days - 1 && emp.schedule[day+1] === '休' && emp.schedule[day+2] === '休') return false;
-                            return true;
-                        };
-                        for (let idx = 0; idx < totalEmps; idx++) {
-                            while (empRestsFb[idx] < maxRestPerEmp) {
-                                let bestDay = -1, bestScore = -Infinity;
-                                for (let d = 1; d <= days; d++) {
-                                    if (!canPlaceFb(idx, d)) continue;
-                                    const score = -dailyRestsFb[d] * 10 + Math.random();
-                                    if (score > bestScore) { bestScore = score; bestDay = d; }
-                                }
-                                if (bestDay < 0) break; // 实在放不下就少休
-                                employees.value[idx].schedule[bestDay] = '休';
-                                dailyRestsFb[bestDay]++;
-                                empRestsFb[idx]++;
-                            }
-                        }
-                        // 最终验证出勤人数
-                        let fbOk = true;
-                        for (let d = 1; d <= days; d++) {
-                            let wk = 0;
-                            employees.value.forEach(emp => {
-                                let v = emp.schedule[d] ? emp.schedule[d].trim() : '';
-                                if (!v || (v !== '休' && v !== '离')) wk++;
-                            });
-                            if (wk > maxHeadcount || wk < minHeadcount) fbOk = false;
-                        }
-                        if (!fbOk) {
-                            alert('排班失败：手动设置的休息存在冲突，请检查是否同一天同一班组有≥2人标记了"休"。');
-                            return;
+                        } catch(e) {
+                            continue;
                         }
                     }
 
-                    // 2. 填充班次：前5人A班，其余B班
+                    if (!success) throw new Error("runScheduleCore-failed");
+
+                    for (let d = 1; d <= days; d++) {
+                        const wk = dailyHeadcount(d);
+                        if (wk > maxHeadcount || wk < minHeadcount) {
+                            throw new Error("manual-rest-conflict");
+                        }
+                    }
+
                     for (let d = 1; d <= days; d++) {
                         employees.value.forEach((emp, index) => {
                             if (!emp.schedule[d]) {
@@ -1210,6 +1233,231 @@
                             }
                         });
                     }
+                };
+
+                // ===== Slot machine animation =====
+                const animateSlotMachine = (planData) => {
+                    return new Promise(resolve => {
+                        isAnimating.value = true;
+                        const days = daysInMonth.value;
+                        const totalEmps = employees.value.length;
+                        const spinValues = ['A', 'B', '\u4f11', ''];
+
+                        const cells = [];
+                        for (let idx = 0; idx < totalEmps; idx++) {
+                            for (let d = 1; d <= days; d++) {
+                                const finalVal = planData[idx].schedule[d] || '';
+                                const isManual = finalVal && !['A', 'B', '\u767d', '\u665a'].includes(finalVal);
+                                cells.push({ empIdx: idx, day: d, finalVal, animated: !isManual });
+                            }
+                        }
+
+                        const shuffled = [...cells.filter(c => c.animated)];
+                        for (let i = shuffled.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                        }
+
+                        cells.filter(c => !c.animated).forEach(c => {
+                            employees.value[c.empIdx].schedule[c.day] = c.finalVal;
+                        });
+
+                        const SPIN_DURATION = 1200;
+                        const SPIN_INTERVAL = 50;
+
+                        const spinTimer = setInterval(() => {
+                            shuffled.forEach(c => {
+                                const emp = employees.value[c.empIdx];
+                                emp.schedule[c.day] = spinValues[Math.floor(Math.random() * spinValues.length)];
+                            });
+                        }, SPIN_INTERVAL);
+
+                        const staggerDelay = Math.max(30, Math.floor(800 / shuffled.length));
+                        shuffled.forEach((cell, i) => {
+                            setTimeout(() => {
+                                employees.value[cell.empIdx].schedule[cell.day] = cell.finalVal;
+                            }, SPIN_DURATION + i * staggerDelay);
+                        });
+
+                        const totalDuration = SPIN_DURATION + shuffled.length * staggerDelay + 300;
+                        setTimeout(() => {
+                            clearInterval(spinTimer);
+                            cells.forEach(c => {
+                                employees.value[c.empIdx].schedule[c.day] = c.finalVal;
+                            });
+                            isAnimating.value = false;
+                            resolve();
+                        }, totalDuration);
+                    });
+                };
+
+                // ===== Switch plan =====
+                const switchPlan = (idx) => {
+                    if (idx < 0 || idx >= generatedPlans.value.length) return;
+                    selectedPlanIndex.value = idx;
+                    const plan = generatedPlans.value[idx];
+                    employees.value.forEach((emp, ei) => {
+                        if (plan[ei] && plan[ei].id === emp.id) {
+                            for (const day in plan[ei].schedule) {
+                                emp.schedule[day] = plan[ei].schedule[day];
+                            }
+                        }
+                    });
+                };
+
+                // ===== Modified autoSchedule (async) =====
+                const autoSchedule = async () => {
+                    const days = daysInMonth.value;
+                    const totalEmps = employees.value.length;
+                    const workTarget = totalWorkTarget.value;
+                    const minHeadcount = 8;
+                    const maxHeadcount = 9;
+                    const minRestsPerDay = Math.max(0, totalEmps - maxHeadcount);
+                    const maxRestsPerDay = Math.max(0, totalEmps - minHeadcount);
+                    const effectiveMaxRestsPerDay = Math.min(maxRestsPerDay, 2);
+                    const priorityTargetRestsPerDay = minRestsPerDay;
+                    const targetRestDays = fixedMonthlyRestDays;
+
+                    if (totalEmps < minHeadcount) {
+                        alert("\u6392\u73ed\u5931\u8d25\uff1a\u5f53\u524d\u53ea\u6709" + totalEmps + "\u4eba\uff0c\u65e0\u6cd5\u6ee1\u8db3\u6bcf\u5929\u81f3\u5c11" + minHeadcount + "\u4eba\u5728\u5c97\u3002");
+                        return;
+                    }
+                    if (minRestsPerDay > effectiveMaxRestsPerDay) {
+                        alert("\u6392\u73ed\u5931\u8d25\uff1a\u6309\u201c\u540c\u4e00\u5929\u767d\u73ed/\u665a\u73ed\u5404\u6700\u591a1\u4eba\u4f11\u201d\u7684\u89c4\u5219\uff0c\u5f53\u524d\u4eba\u6570\u65e0\u6cd5\u6ee1\u8db3\u6bcf\u59298-9\u4eba\u5728\u5c97\u3002");
+                        return;
+                    }
+
+                    const minPossibleWork = totalEmps * days - totalEmps * targetRestDays;
+                    if (workTarget < minPossibleWork) {
+                        alert("\u6392\u73ed\u5931\u8d25\uff1a\u6bcf\u4eba\u56fa\u5b9a\u4f11" + targetRestDays + "\u5929\uff0c" + totalEmps + "\u4eba\u00d7" + days + "\u5929 \u6700\u5c11\u9700\u51fa\u52e4 " + minPossibleWork + " \u4e2a\u5de5\u3002\\n\u5f53\u524d\u6708\u5de5\u4e0a\u9650 " + workTarget + " \u8fc7\u4f4e\uff0c\u65e0\u6cd5\u8fbe\u6210\u3002\u8bf7\u5c06\u6708\u5de5\u4e0a\u9650\u8c03\u81f3 " + minPossibleWork + " \u4ee5\u4e0a\u3002");
+                        return;
+                    }
+
+                    const backupState = JSON.parse(JSON.stringify(employees.value));
+                    const allPlans = [];
+                    const MAX_PLANS = 5;
+                    const MAX_ATTEMPTS = 80;
+
+                    for (let attempt = 0; attempt < MAX_ATTEMPTS && allPlans.length < MAX_PLANS; attempt++) {
+                        employees.value = JSON.parse(JSON.stringify(backupState));
+                        try {
+                            runScheduleCore();
+                            allPlans.push(JSON.parse(JSON.stringify(employees.value)));
+                        } catch(e) {
+                            // retry
+                        }
+                    }
+
+                    if (allPlans.length < 5) {
+                        // Fallback: relaxed greedy single-rest placement, generate up to 5 plans
+                        const minHeadcount_fb = 8;
+                        const maxHeadcount_fb = 9;
+                        const effectiveMaxRests_fb = Math.min(Math.max(0, employees.value.length - minHeadcount_fb), 2);
+                        const maxRestPerEmp_fb = fixedMonthlyRestDays;
+
+                        const snapshotFb = backupState.map(emp => {
+                            const s = {};
+                            for (let d = 1; d <= days; d++) {
+                                const v = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
+                                s[d] = (v === 'A' || v === 'B' || v === '\u767d' || v === '\u665a') ? '' : emp.schedule[d];
+                            }
+                            return s;
+                        });
+
+                        const needed = 5 - allPlans.length;
+                        for (let fbAttempt = 0; fbAttempt < needed * 3 && allPlans.length < 5; fbAttempt++) {
+                            employees.value = JSON.parse(JSON.stringify(backupState));
+                            let dailyRestsFb = new Array(days + 2).fill(0);
+                            let empRestsFb = new Array(totalEmps).fill(0);
+                            employees.value.forEach((emp, idx) => {
+                                for (let d = 1; d <= days; d++) {
+                                    emp.schedule[d] = snapshotFb[idx][d];
+                                    if (emp.schedule[d] === '\u4f11' || emp.schedule[d] === '\u79bb') {
+                                        dailyRestsFb[d]++;
+                                        empRestsFb[idx]++;
+                                    }
+                                }
+                            });
+
+                            const canPlaceFb = (idx, day) => {
+                                if (employees.value[idx].schedule[day]) return false;
+                                if (empRestsFb[idx] >= maxRestPerEmp_fb) return false;
+                                if (dailyRestsFb[day] >= effectiveMaxRests_fb) return false;
+                                const emp = employees.value[idx];
+                                if (day > 1 && emp.schedule[day-1] === '\u4f11' && day < days && emp.schedule[day+1] === '\u4f11') return false;
+                                if (day > 2 && emp.schedule[day-1] === '\u4f11' && emp.schedule[day-2] === '\u4f11') return false;
+                                if (day < days - 1 && emp.schedule[day+1] === '\u4f11' && emp.schedule[day+2] === '\u4f11') return false;
+                                return true;
+                            };
+
+                            // Randomize employee order for variety
+                            const empOrder = Array.from({length: totalEmps}, (_, i) => i);
+                            for (let i = empOrder.length - 1; i > 0; i--) {
+                                const j = Math.floor(Math.random() * (i + 1));
+                                [empOrder[i], empOrder[j]] = [empOrder[j], empOrder[i]];
+                            }
+
+                            for (let i = 0; i < totalEmps; i++) {
+                                const idx = empOrder[i];
+                                while (empRestsFb[idx] < maxRestPerEmp_fb) {
+                                    let bestDay = -1, bestScore = -Infinity;
+                                    const dayOrder = Array.from({length: days}, (_, di) => di + 1);
+                                    for (let di = dayOrder.length - 1; di > 0; di--) {
+                                        const dj = Math.floor(Math.random() * (di + 1));
+                                        [dayOrder[di], dayOrder[dj]] = [dayOrder[dj], dayOrder[di]];
+                                    }
+                                    for (const d of dayOrder) {
+                                        if (!canPlaceFb(idx, d)) continue;
+                                        const score = -dailyRestsFb[d] * 10 + Math.random();
+                                        if (score > bestScore) { bestScore = score; bestDay = d; }
+                                    }
+                                    if (bestDay < 0) break;
+                                    employees.value[idx].schedule[bestDay] = '\u4f11';
+                                    dailyRestsFb[bestDay]++;
+                                    empRestsFb[idx]++;
+                                }
+                            }
+
+                            let fbOk = true;
+                            for (let d = 1; d <= days; d++) {
+                                let wk = 0;
+                                employees.value.forEach(emp => {
+                                    const v = emp.schedule[d] ? emp.schedule[d].trim() : '';
+                                    if (!v || (v !== '\u4f11' && v !== '\u79bb')) wk++;
+                                });
+                                if (wk > maxHeadcount_fb || wk < minHeadcount_fb) { fbOk = false; break; }
+                            }
+                            if (!fbOk) continue;
+
+                            for (let d = 1; d <= days; d++) {
+                                employees.value.forEach((emp, index) => {
+                                    if (!emp.schedule[d]) {
+                                        emp.schedule[d] = index < 5 ? 'A' : 'B';
+                                    }
+                                });
+                            }
+
+                            // Check if this plan is unique
+                            const planJson = JSON.stringify(employees.value);
+                            const isDuplicate = allPlans.some(p => JSON.stringify(p) === planJson);
+                            if (!isDuplicate) {
+                                allPlans.push(JSON.parse(planJson));
+                            }
+                        }
+
+                        if (allPlans.length === 0) {
+                            alert('\u6392\u73ed\u5931\u8d25\uff1a\u624b\u52a8\u8bbe\u7f6e\u7684\u4f11\u606f\u5b58\u5728\u51b2\u7a81\uff0c\u8bf7\u68c0\u67e5\u662f\u5426\u540c\u4e00\u5929\u540c\u4e00\u73ed\u7ec4\u6709\u22652\u4eba\u6807\u8bb0\u4e86\u201c\u4f11\u201d\u3002');
+                            return;
+                        }
+                    }
+
+                    employees.value = JSON.parse(JSON.stringify(backupState));
+                    generatedPlans.value = allPlans;
+                    showPlanSelector.value = true;
+                    selectedPlanIndex.value = 0;
+
+                    await animateSlotMachine(allPlans[0]);
+                    switchPlan(0);
                 };
 
                 const dailyHeadcount = (day) => {
@@ -1305,6 +1553,7 @@
                 };
 
                 return {
+                    generatedPlans, showPlanSelector, selectedPlanIndex, isAnimating, planStats, switchPlan,
                     selectedMonthStr, title, bottomNotes, employees, daysInMonth, totalWorkMonth,
                     onMonthChange, addEmployee, removeEmployee, getCellClass, cycleValue,
                     clearAB, clearRest, autoSchedule, dailyHeadcount, isUnderStaffed, isOverStaffed, statCount, exportToExcel,
