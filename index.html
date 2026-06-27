@@ -1045,38 +1045,44 @@
                             if (!restOk && !isRandomMode) throw new Error("daily-rest");
 
                                                         // ===== PHASE 5: FILL WORK SHIFTS (A/B) =====
-                            // Two-pass fill: first by group, then fill remaining to hit exact targets
+                            // Row-by-row pre-fill: night group → B, white group → A (creates consecutive blocks)
                             for (let d = 1; d <= days; d++) {
-                                const targetA = dayGroupSz;
-                                const targetB = totalEmps - dailyRests[d] - targetA;
-                                let aCount = 0, bCount = 0;
-                                employees.value.forEach((emp, idx) => {
-                                    const v = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
-                                    if (v === 'A' || v === '白') aCount++;
-                                    else if (v === 'B' || v === '晚') bCount++;
-                                });
-                                // Pass 1: fill by group membership
                                 employees.value.forEach((emp, idx) => {
                                     if (!emp.schedule[d]) {
-                                        if (idx < dayGroupSz && aCount < targetA) {
-                                            emp.schedule[d] = 'A'; aCount++;
-                                        } else if (idx >= dayGroupSz && bCount < targetB) {
-                                            emp.schedule[d] = 'B'; bCount++;
-                                        }
+                                        emp.schedule[d] = idx < dayGroupSz ? 'A' : 'B';
                                     }
                                 });
-                                // Pass 2: fill remaining empties regardless of group
-                                employees.value.forEach((emp, idx) => {
-                                    if (!emp.schedule[d]) {
-                                        if (aCount < targetA) {
-                                            emp.schedule[d] = 'A'; aCount++;
-                                        } else if (bCount < targetB) {
-                                            emp.schedule[d] = 'B'; bCount++;
-                                        } else {
-                                            emp.schedule[d] = 'A'; aCount++;
-                                        }
-                                    }
+                            }
+                            // Per-day correction to meet exact headcount targets
+                            for (let d = 1; d <= days; d++) {
+                                const targetB = totalEmps - dailyRests[d] - dayGroupSz;
+                                let bCount = 0;
+                                employees.value.forEach(emp => {
+                                    if (emp.schedule[d] === 'B' || emp.schedule[d] === '晚') bCount++;
                                 });
+                                if (bCount > targetB) {
+                                    for (let n = bCount - targetB; n > 0; n--) {
+                                        let bestI = -1, bestAdj = Infinity;
+                                        employees.value.forEach((emp, idx) => {
+                                            if (emp.schedule[d] !== 'B') return;
+                                            const adj = (emp.schedule[d-1] === 'B' ? 1 : 0) + (emp.schedule[d+1] === 'B' ? 1 : 0);
+                                            if (adj < bestAdj) { bestAdj = adj; bestI = idx; }
+                                        });
+                                        if (bestI >= 0) employees.value[bestI].schedule[d] = 'A';
+                                    }
+                                } else if (bCount < targetB) {
+                                    for (let n = targetB - bCount; n > 0; n--) {
+                                        let bestI = -1, bestScore = -Infinity;
+                                        employees.value.forEach((emp, idx) => {
+                                            if (emp.schedule[d] !== 'A') return;
+                                            const nightBonus = idx >= dayGroupSz ? 10 : 0;
+                                            const adj = (emp.schedule[d-1] === 'B' ? 1 : 0) + (emp.schedule[d+1] === 'B' ? 1 : 0);
+                                            const score = nightBonus + adj;
+                                            if (score > bestScore) { bestScore = score; bestI = idx; }
+                                        });
+                                        if (bestI >= 0) employees.value[bestI].schedule[d] = 'B';
+                                    }
+                                }
                             }
 
 // ===== PHASE 6: FINAL VALIDATION =====
