@@ -1047,44 +1047,13 @@
                             if (!restOk) throw new Error("daily-rest");
 
                                                         // ===== PHASE 5: FILL WORK SHIFTS (A/B) =====
-                            // Row-by-row pre-fill: night group → B, white group → A (creates consecutive blocks)
+                            // Group-only fill: white group always A, night group always B (no crossover)
                             for (let d = 1; d <= days; d++) {
                                 employees.value.forEach((emp, idx) => {
                                     if (!emp.schedule[d]) {
                                         emp.schedule[d] = idx < dayGroupSz ? 'A' : 'B';
                                     }
                                 });
-                            }
-                            // Per-day correction to meet exact headcount targets
-                            for (let d = 1; d <= days; d++) {
-                                const targetB = totalEmps - dailyRests[d] - dayGroupSz;
-                                let bCount = 0;
-                                employees.value.forEach(emp => {
-                                    if (emp.schedule[d] === 'B' || emp.schedule[d] === '晚') bCount++;
-                                });
-                                if (bCount > targetB) {
-                                    for (let n = bCount - targetB; n > 0; n--) {
-                                        let bestI = -1, bestAdj = Infinity;
-                                        employees.value.forEach((emp, idx) => {
-                                            if (emp.schedule[d] !== 'B') return;
-                                            const adj = (emp.schedule[d-1] === 'B' ? 1 : 0) + (emp.schedule[d+1] === 'B' ? 1 : 0);
-                                            if (adj < bestAdj) { bestAdj = adj; bestI = idx; }
-                                        });
-                                        if (bestI >= 0) employees.value[bestI].schedule[d] = 'A';
-                                    }
-                                } else if (bCount < targetB) {
-                                    for (let n = targetB - bCount; n > 0; n--) {
-                                        let bestI = -1, bestScore = -Infinity;
-                                        employees.value.forEach((emp, idx) => {
-                                            if (emp.schedule[d] !== 'A') return;
-                                            const nightBonus = idx >= dayGroupSz ? 10 : 0;
-                                            const adj = (emp.schedule[d-1] === 'B' ? 1 : 0) + (emp.schedule[d+1] === 'B' ? 1 : 0);
-                                            const score = nightBonus + adj;
-                                            if (score > bestScore) { bestScore = score; bestI = idx; }
-                                        });
-                                        if (bestI >= 0) employees.value[bestI].schedule[d] = 'B';
-                                    }
-                                }
                             }
 
 // ===== PHASE 6: FINAL VALIDATION =====
