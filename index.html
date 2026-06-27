@@ -1017,7 +1017,9 @@
                                         const wouldPair = (d > 1 && employees.value[idx].schedule[d - 1] === '休') ||
                                                         (d < days && employees.value[idx].schedule[d + 1] === '休');
                                         const pairPenalty = wouldPair ? -50 : 0;
-                                        const dayScore = -dailyRests[d] * 15 + pairPenalty - Math.abs(d - days / 2) * 0.1 + Math.random() * 3;
+                                        const needAfter = maxRestPerEmp - empRests[idx] - 1;
+                                        const edgeBias = needAfter > 0 ? Math.min(d - 1, days - d) * 0.5 : 0;
+                                        const dayScore = -dailyRests[d] * 15 + pairPenalty + edgeBias - Math.abs(d - days / 2) * 0.1 + Math.random() * 3;
                                         if (dayScore > bestScore) { bestScore = dayScore; bestDay = d; }
                                     }
                                     if (bestDay >= 0) {
@@ -1032,7 +1034,7 @@
                             for (let idx = 0; idx < totalEmps; idx++) {
                                 if (empRests[idx] !== maxRestPerEmp) { restOk = false; break; }
                             }
-                            if (!restOk && !isRandomMode) throw new Error("rest-count");
+                            if (!restOk) throw new Error("rest-count");
 
                             for (let d = 1; d <= days; d++) {
                                 if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) {
@@ -1042,7 +1044,7 @@
                                     restOk = false; break;
                                 }
                             }
-                            if (!restOk && !isRandomMode) throw new Error("daily-rest");
+                            if (!restOk) throw new Error("daily-rest");
 
                                                         // ===== PHASE 5: FILL WORK SHIFTS (A/B) =====
                             // Row-by-row pre-fill: night group → B, white group → A (creates consecutive blocks)
