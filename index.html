@@ -1272,6 +1272,10 @@
                                 if (day > 1 && emp.schedule[day-1] === '\u4f11' && day < days && emp.schedule[day+1] === '\u4f11') return false;
                                 if (day > 2 && emp.schedule[day-1] === '\u4f11' && emp.schedule[day-2] === '\u4f11') return false;
                                 if (day < days - 1 && emp.schedule[day+1] === '\u4f11' && emp.schedule[day+2] === '\u4f11') return false;
+                                for (let dd = 1; dd <= days; dd++) {
+                                    if (dd === day) continue;
+                                    if (emp.schedule[dd] === '休' && Math.abs(day - dd) < 8) return false;
+                                }
                                 return true;
                             };
 
@@ -1314,6 +1318,12 @@
                             }
                             if (!fbOk) continue;
 
+                            let restOkFb = true;
+                            for (let idx = 0; idx < totalEmps; idx++) {
+                                if (empRestsFb[idx] !== maxRestPerEmp_fb) { restOkFb = false; break; }
+                            }
+                            if (!restOkFb) continue;
+
                             for (let d = 1; d <= days; d++) {
                                 employees.value.forEach((emp, index) => {
                                     if (!emp.schedule[d]) {
@@ -1321,6 +1331,15 @@
                                     }
                                 });
                             }
+
+                            let totalWorkFb = 0;
+                            for (let d = 1; d <= days; d++) {
+                                employees.value.forEach(emp => {
+                                    const v = emp.schedule[d] ? emp.schedule[d].trim() : '';
+                                    if (v && v !== '休' && v !== '离') totalWorkFb++;
+                                });
+                            }
+                            if (totalWorkFb > workTarget) continue;
 
                             // Check if this plan is unique
                             const planJson = JSON.stringify(employees.value);
