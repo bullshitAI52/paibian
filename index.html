@@ -773,26 +773,27 @@
                 const runScheduleCore = () => {
                     const days = daysInMonth.value;
                     const totalEmps = employees.value.length;
+                    const dayGroupSz = 5;
                     const minHeadcount = 8;
                     const maxHeadcount = 9;
                     const minRestsPerDay = Math.max(0, totalEmps - maxHeadcount);
                     const maxRestsPerDay = Math.max(0, totalEmps - minHeadcount);
                     const effectiveMaxRestsPerDay = Math.min(maxRestsPerDay, 2);
-                    const priorityTargetRestsPerDay = minRestsPerDay;
                     const targetRestDays = fixedMonthlyRestDays;
                     const maxRestPerEmp = targetRestDays;
+                    const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
 
-                    const snapshot = employees.value.map((emp, empIdx) => {
+                    const snapshot = employees.value.map((emp) => {
                         const cloneSch = {};
                         for (let d = 1; d <= 31; d++) {
                             const val = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
-                            cloneSch[d] = (val === 'A' || val === 'B' || val === '\u767d' || val === '\u665a') ? '' : emp.schedule[d];
+                            cloneSch[d] = (val === 'A' || val === 'B' || val === '白' || val === '晚') ? '' : emp.schedule[d];
                         }
                         return { id: emp.id, schedule: cloneSch };
                     });
 
                     let success = false;
-                    const MAX_RETRIES = 120;
+                    const MAX_RETRIES = 200;
 
                     for (let retry = 0; retry < MAX_RETRIES; retry++) {
                         employees.value.forEach((emp, i) => {
@@ -803,39 +804,31 @@
 
                         try {
                             let dailyRests = new Array(days + 2).fill(0);
-                            let assigned = 0;
                             let empRests = new Array(totalEmps).fill(0);
 
                             employees.value.forEach((emp, idx) => {
                                 for (let d = 1; d <= days; d++) {
-                                    if (emp.schedule[d] === '\u4f11' || emp.schedule[d] === '\u79bb') {
+                                    if (emp.schedule[d] === '休' || emp.schedule[d] === '离') {
                                         dailyRests[d]++;
-                                        assigned++;
                                         empRests[idx]++;
                                     }
                                 }
                             });
 
-                            let lockedOk = true;
+                            let manualOk = true;
                             for (let d = 1; d <= days; d++) {
-                                if (dailyRests[d] > effectiveMaxRestsPerDay) lockedOk = false;
+                                if (dailyRests[d] > effectiveMaxRestsPerDay) manualOk = false;
                             }
                             for (let idx = 0; idx < totalEmps; idx++) {
-                                if (empRests[idx] > maxRestPerEmp) lockedOk = false;
+                                if (empRests[idx] > maxRestPerEmp) manualOk = false;
                             }
-                            if (priorityEnabled.value) {
-                                const pEnd = Math.min(priorityDays.value, days);
-                                for (let d = 1; d <= pEnd; d++) {
-                                    if (dailyRests[d] > priorityTargetRestsPerDay) lockedOk = false;
-                                }
-                            }
-                            if (!lockedOk) throw new Error("locked");
+                            if (!manualOk) throw new Error("manual-overflow");
 
                             const getGroupRests = (day) => {
                                 let aR = 0, bR = 0;
                                 employees.value.forEach((e, i2) => {
-                                    if (e.schedule[day] === '\u4f11' || e.schedule[day] === '\u79bb') {
-                                        if (i2 < 5) aR++; else bR++;
+                                    if (e.schedule[day] === '休' || e.schedule[day] === '离') {
+                                        if (i2 < dayGroupSz) aR++; else bR++;
                                     }
                                 });
                                 return { aR, bR };
@@ -846,17 +839,13 @@
                                 if (emp.schedule[day]) return false;
                                 if (empRests[idx] >= maxRestPerEmp) return false;
                                 if (dailyRests[day] >= effectiveMaxRestsPerDay) return false;
-                                if (priorityEnabled.value && day <= Math.min(priorityDays.value, days) && dailyRests[day] >= priorityTargetRestsPerDay) return false;
-                                if (day > 1 && emp.schedule[day-1] === '\u4f11' && day < days && emp.schedule[day+1] === '\u4f11') return false;
-                                if (day > 2 && emp.schedule[day-1] === '\u4f11' && emp.schedule[day-2] === '\u4f11') return false;
-                                if (day < days - 1 && emp.schedule[day+1] === '\u4f11' && emp.schedule[day+2] === '\u4f11') return false;
+                                if (pEnd > 0 && day <= pEnd && dailyRests[day] >= 1) return false;
+                                if (day > 1 && emp.schedule[day-1] === '休' && day < days && emp.schedule[day+1] === '休') return false;
+                                if (day > 2 && emp.schedule[day-1] === '休' && emp.schedule[day-2] === '休') return false;
+                                if (day < days - 1 && emp.schedule[day+1] === '休' && emp.schedule[day+2] === '休') return false;
                                 const { aR, bR } = getGroupRests(day);
-                                const inMode3Range = scheduleMode.value === '2plus2first' && day <= mode3Days.value;
-                                const maxDayGroupRest = inMode3Range ? Math.max(0, 5 - mode3DayCount.value) : 1;
-                                const maxNightGroupRest = inMode3Range ? Math.max(0, 5 - mode3NightCount.value) : 1;
-                                if (idx < 5 && aR >= maxDayGroupRest) return false;
-                                if (idx >= 5 && bR >= maxNightGroupRest) return false;
-                                if (inMode3Range && idx < mode3DayCount.value) return false;
+                                if (idx < dayGroupSz && aR >= 1) return false;
+                                if (idx >= dayGroupSz && bR >= 1) return false;
                                 return true;
                             };
 
@@ -866,28 +855,19 @@
                                 if (empRests[idx] + 2 > maxRestPerEmp) return false;
                                 if (emp.schedule[startDay] || emp.schedule[startDay + 1]) return false;
                                 if (dailyRests[startDay] >= effectiveMaxRestsPerDay || dailyRests[startDay + 1] >= effectiveMaxRestsPerDay) return false;
-                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
-                                if (pEnd > 0 && ((startDay <= pEnd && dailyRests[startDay] >= priorityTargetRestsPerDay) || (startDay + 1 <= pEnd && dailyRests[startDay + 1] >= priorityTargetRestsPerDay))) return false;
-                                if (startDay > 1 && emp.schedule[startDay - 1] === '\u4f11') return false;
-                                if (startDay + 2 <= days && emp.schedule[startDay + 2] === '\u4f11') return false;
+                                if (pEnd > 0 && startDay <= pEnd) return false;
+                                if (pEnd > 0 && startDay + 1 <= pEnd) return false;
+                                if (startDay > 1 && emp.schedule[startDay - 1] === '休') return false;
+                                if (startDay + 2 <= days && emp.schedule[startDay + 2] === '休') return false;
                                 const g1 = getGroupRests(startDay);
                                 const g2 = getGroupRests(startDay + 1);
-                                const inM3Day1 = scheduleMode.value === '2plus2first' && startDay <= mode3Days.value;
-                                const inM3Day2 = scheduleMode.value === '2plus2first' && startDay + 1 <= mode3Days.value;
-                                const maxDR1 = inM3Day1 ? Math.max(0, 5 - mode3DayCount.value) : 1;
-                                const maxDR2 = inM3Day2 ? Math.max(0, 5 - mode3DayCount.value) : 1;
-                                const maxNR1 = inM3Day1 ? Math.max(0, 5 - mode3NightCount.value) : 1;
-                                const maxNR2 = inM3Day2 ? Math.max(0, 5 - mode3NightCount.value) : 1;
-                                if (idx < 5 && (g1.aR >= maxDR1 || g2.aR >= maxDR2)) return false;
-                                if (idx >= 5 && (g1.bR >= maxNR1 || g2.bR >= maxNR2)) return false;
-                                if (scheduleMode.value === '2plus2first' && idx < mode3DayCount.value) {
-                                    if (startDay <= mode3Days.value || startDay + 1 <= mode3Days.value) return false;
-                                }
+                                if (idx < dayGroupSz && (g1.aR >= 1 || g2.aR >= 1)) return false;
+                                if (idx >= dayGroupSz && (g1.bR >= 1 || g2.bR >= 1)) return false;
                                 return true;
                             };
 
                             const placeSingleRest = (idx, day) => {
-                                employees.value[idx].schedule[day] = '\u4f11';
+                                employees.value[idx].schedule[day] = '休';
                                 dailyRests[day]++;
                                 empRests[idx]++;
                             };
@@ -901,7 +881,7 @@
                                 const starts = [];
                                 const emp = employees.value[idx];
                                 for (let d = 1; d < days; d++) {
-                                    if (emp.schedule[d] === '\u4f11' && emp.schedule[d + 1] === '\u4f11') {
+                                    if (emp.schedule[d] === '休' && emp.schedule[d + 1] === '休') {
                                         starts.push(d);
                                         d++;
                                     }
@@ -915,67 +895,111 @@
                                 return starts.every(oldStart => Math.abs(startDay - oldStart) >= 7);
                             };
 
-                            const completeSingleRestPair = (idx) => {
-                                const emp = employees.value[idx];
-                                let candidates = [];
-                                for (let d = 1; d <= days; d++) {
-                                    if (emp.schedule[d] !== '\u4f11') continue;
-                                    if (emp.schedule[d - 1] === '\u4f11' || emp.schedule[d + 1] === '\u4f11') continue;
-                                    if (d > 1 && canPlaceSingleRest(idx, d - 1) && pairSpacingOk(idx, d - 1)) candidates.push(d - 1);
-                                    if (d < days && canPlaceSingleRest(idx, d + 1) && pairSpacingOk(idx, d)) candidates.push(d + 1);
+                            // ===== PHASE 1: PRIORITY DAYS - ensure exactly 1 rest, 5白+4夜 =====
+                            if (pEnd > 0) {
+                                const dayQueue = Array.from({length: dayGroupSz}, (_, i) => i);
+                                const nightQueue = Array.from({length: totalEmps - dayGroupSz}, (_, i) => i + dayGroupSz);
+                                let dayPtr = 0, nightPtr = 0;
+
+                                for (let d = 1; d <= pEnd; d++) {
+                                    if (dailyRests[d] >= 1) continue;
+
+                                    let restPick = -1;
+                                    if (d % 2 === 1) {
+                                        for (let tries = 0; tries < nightQueue.length && restPick < 0; tries++) {
+                                            const idx = nightQueue[(nightPtr + tries) % nightQueue.length];
+                                            if (canPlaceSingleRest(idx, d)) {
+                                                restPick = idx;
+                                                nightPtr = (nightPtr + tries + 1) % nightQueue.length;
+                                            }
+                                        }
+                                        if (restPick < 0) {
+                                            for (let tries = 0; tries < dayQueue.length && restPick < 0; tries++) {
+                                                const idx = dayQueue[(dayPtr + tries) % dayQueue.length];
+                                                if (canPlaceSingleRest(idx, d)) {
+                                                    restPick = idx;
+                                                    dayPtr = (dayPtr + tries + 1) % dayQueue.length;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        for (let tries = 0; tries < dayQueue.length && restPick < 0; tries++) {
+                                            const idx = dayQueue[(dayPtr + tries) % dayQueue.length];
+                                            if (canPlaceSingleRest(idx, d)) {
+                                                restPick = idx;
+                                                dayPtr = (dayPtr + tries + 1) % dayQueue.length;
+                                            }
+                                        }
+                                        if (restPick < 0) {
+                                            for (let tries = 0; tries < nightQueue.length && restPick < 0; tries++) {
+                                                const idx = nightQueue[(nightPtr + tries) % nightQueue.length];
+                                                if (canPlaceSingleRest(idx, d)) {
+                                                    restPick = idx;
+                                                    nightPtr = (nightPtr + tries + 1) % nightQueue.length;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (restPick >= 0) {
+                                        placeSingleRest(restPick, d);
+                                    }
                                 }
-                                candidates.sort((a, b) => dailyRests[a] - dailyRests[b] || Math.random() - 0.5);
-                                if (!candidates.length) return false;
-                                placeSingleRest(idx, candidates[0]);
-                                return true;
-                            };
+                            }
 
-                            if (scheduleMode.value === '2plus2') {
-                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+                            // ===== PHASE 2: 2+2 REST PAIRS =====
+                            const isRandomMode = scheduleMode.value === 'random';
+                            const maxPairsPerPerson = isRandomMode ? 1 : 2;
 
-                                // Phase 1: 2+2 — round-robin: first pair early, second pair late
-                                let progress1;
+                            // Round 1: First pair — prefer first half
+                            let placedAny;
+                            do {
+                                placedAny = false;
+                                const order = Array.from({length: totalEmps}, (_, i) => i);
+                                for (let i = order.length - 1; i > 0; i--) {
+                                    const j = Math.floor(Math.random() * (i + 1));
+                                    [order[i], order[j]] = [order[j], order[i]];
+                                }
+                                for (const idx of order) {
+                                    if (empRests[idx] >= maxRestPerEmp) continue;
+                                    if (empRests[idx] + 2 > maxRestPerEmp) continue;
+                                    if (getPairStarts(idx).length >= maxPairsPerPerson) continue;
+                                    let bestS = -1, bestScore = -Infinity;
+                                    const sOrder = Array.from({length: Math.floor(days / 2)}, (_, i) => i + 1);
+                                    for (let i = sOrder.length - 1; i > 0; i--) {
+                                        const j = Math.floor(Math.random() * (i + 1));
+                                        [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
+                                    }
+                                    for (const s of sOrder) {
+                                        if (!canPlaceRestPair(idx, s)) continue;
+                                        if (!pairSpacingOk(idx, s)) continue;
+                                        const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
+                                        const earlyBias = -s * 0.8;
+                                        const score = coverScore + earlyBias + Math.random() * 4;
+                                        if (score > bestScore) { bestScore = score; bestS = s; }
+                                    }
+                                    if (bestS >= 0) {
+                                        placeRestPair(idx, bestS);
+                                        placedAny = true;
+                                    }
+                                }
+                            } while (placedAny);
+
+                            // Round 2: Second pair — prefer second half (non-random modes only)
+                            if (!isRandomMode) {
                                 do {
-                                    progress1 = false;
-                                    // Round 1a: first pair — prefer first half of month
-                                    const order1 = Array.from({length: totalEmps}, (_, i) => i);
-                                    for (let i = order1.length - 1; i > 0; i--) {
+                                    placedAny = false;
+                                    const order = Array.from({length: totalEmps}, (_, i) => i);
+                                    for (let i = order.length - 1; i > 0; i--) {
                                         const j = Math.floor(Math.random() * (i + 1));
-                                        [order1[i], order1[j]] = [order1[j], order1[i]];
+                                        [order[i], order[j]] = [order[j], order[i]];
                                     }
-                                    for (const idx of order1) {
+                                    for (const idx of order) {
                                         if (empRests[idx] >= maxRestPerEmp) continue;
                                         if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        if (getPairStarts(idx).length > 0) continue;
+                                        if (getPairStarts(idx).length >= 2) continue;
                                         let bestS = -1, bestScore = -Infinity;
-                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
-                                        for (let i = sOrder.length - 1; i > 0; i--) {
-                                            const j = Math.floor(Math.random() * (i + 1));
-                                            [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
-                                        }
-                                        for (const s of sOrder) {
-                                            if (!canPlaceRestPair(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
-                                            const earlyBias = -s * 0.6;
-                                            const score = coverScore + earlyBias + Math.random() * 4;
-                                            if (score > bestScore) { bestScore = score; bestS = s; }
-                                        }
-                                        if (bestS >= 0) {
-                                            placeRestPair(idx, bestS);
-                                            progress1 = true;
-                                        }
-                                    }
-                                    // Round 1b: second pair — prefer second half of month
-                                    const order2 = Array.from({length: totalEmps}, (_, i) => i);
-                                    for (let i = order2.length - 1; i > 0; i--) {
-                                        const j = Math.floor(Math.random() * (i + 1));
-                                        [order2[i], order2[j]] = [order2[j], order2[i]];
-                                    }
-                                    for (const idx of order2) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        let bestS = -1, bestScore = -Infinity;
-                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
+                                        const startHalf = Math.floor(days / 2) + 1;
+                                        const sOrder = Array.from({length: days - startHalf}, (_, i) => i + startHalf);
                                         for (let i = sOrder.length - 1; i > 0; i--) {
                                             const j = Math.floor(Math.random() * (i + 1));
                                             [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
@@ -984,230 +1008,100 @@
                                             if (!canPlaceRestPair(idx, s)) continue;
                                             if (!pairSpacingOk(idx, s)) continue;
                                             const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
-                                            const lateBias = s * 0.6;
+                                            const lateBias = s * 0.8;
                                             const score = coverScore + lateBias + Math.random() * 4;
                                             if (score > bestScore) { bestScore = score; bestS = s; }
                                         }
                                         if (bestS >= 0) {
                                             placeRestPair(idx, bestS);
-                                            progress1 = true;
+                                            placedAny = true;
                                         }
                                     }
-                                } while (progress1);
+                                } while (placedAny);
+                            }
 
-                                // Phase 2: For those without a pair, give at least 1 pair → 2+1+1
-                                for (let round = 0; round < totalEmps; round++) {
-                                    let cands = [];
-                                    for (let idx = 0; idx < totalEmps; idx++) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        if (getPairStarts(idx).length > 0) continue;
-                                        for (let s = 1; s < days; s++) {
-                                            if (!canPlaceRestPair(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 15 : 0) + (dailyRests[s + 1] === 0 ? 15 : 0);
-                                            const needScore = (maxRestPerEmp - empRests[idx]) * 5;
-                                            cands.push({ idx, s, score: coverScore + needScore - dailyRests[s] - dailyRests[s + 1] });
-                                        }
+                            // ===== PHASE 3: SINGLE REST FILL =====
+                            let filledSingles;
+                            do {
+                                filledSingles = false;
+                                const empByRest = Array.from({length: totalEmps}, (_, i) => i)
+                                    .sort((a, b) => empRests[a] - empRests[b] || Math.random() - 0.5);
+                                for (const idx of empByRest) {
+                                    if (empRests[idx] >= maxRestPerEmp) continue;
+                                    let bestDay = -1, bestScore = -Infinity;
+                                    for (let d = 1; d <= days; d++) {
+                                        if (!canPlaceSingleRest(idx, d)) continue;
+                                        const wouldPair = (d > 1 && employees.value[idx].schedule[d - 1] === '休') ||
+                                                        (d < days && employees.value[idx].schedule[d + 1] === '休');
+                                        const pairPenalty = wouldPair ? -50 : 0;
+                                        const dayScore = -dailyRests[d] * 15 + pairPenalty - Math.abs(d - days / 2) * 0.1 + Math.random() * 3;
+                                        if (dayScore > bestScore) { bestScore = dayScore; bestDay = d; }
                                     }
-                                    if (!cands.length) break;
-                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
-                                    placeRestPair(cands[0].idx, cands[0].s);
+                                    if (bestDay >= 0) {
+                                        placeSingleRest(idx, bestDay);
+                                        filledSingles = true;
+                                    }
                                 }
+                            } while (filledSingles);
 
-                                // Phase 3: Fill remaining as isolated singles → 1+1+1+1
-                                let filled2;
-                                do {
-                                    filled2 = false;
-                                    const empOrder = Array.from({length: totalEmps}, (_, i) => i);
-                                    for (let i = empOrder.length - 1; i > 0; i--) {
-                                        const j = Math.floor(Math.random() * (i + 1));
-                                        [empOrder[i], empOrder[j]] = [empOrder[j], empOrder[i]];
-                                    }
-                                    for (const idx of empOrder) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        let bestDay = -1, bestScore = -Infinity;
-                                        const dayOrder = Array.from({length: days}, (_, di) => di + 1);
-                                        for (let di = dayOrder.length - 1; di > 0; di--) {
-                                            const dj = Math.floor(Math.random() * (di + 1));
-                                            [dayOrder[di], dayOrder[dj]] = [dayOrder[dj], dayOrder[di]];
-                                        }
-                                        for (const d of dayOrder) {
-                                            if (!canPlaceSingleRest(idx, d)) continue;
-                                            const emp = employees.value[idx];
-                                            const wouldPair = (d > 1 && emp.schedule[d - 1] === '\u4f11') || (d < days && emp.schedule[d + 1] === '\u4f11');
-                                            const score = -dailyRests[d] * 10 + (wouldPair ? -20 : 0) + Math.random() * 3;
-                                            if (score > bestScore) { bestScore = score; bestDay = d; }
-                                        }
-                                        if (bestDay >= 0) {
-                                            placeSingleRest(idx, bestDay);
-                                            filled2 = true;
-                                        }
-                                    }
-                                } while (filled2);
+                            // ===== PHASE 4: VALIDATE REST COUNTS =====
+                            let restOk = true;
+                            for (let idx = 0; idx < totalEmps; idx++) {
+                                if (empRests[idx] !== maxRestPerEmp) { restOk = false; break; }
+                            }
+                            if (!restOk && !isRandomMode) throw new Error("rest-count");
 
-                                let finalOk = true;
-                                for (let idx = 0; idx < totalEmps; idx++) {
-                                    if (empRests[idx] !== maxRestPerEmp) { finalOk = false; }
+                            for (let d = 1; d <= days; d++) {
+                                if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) {
+                                    restOk = false; break;
                                 }
-                                for (let d = 1; d <= days; d++) {
-                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) finalOk = false;
-                                    if (d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) finalOk = false;
+                                if (pEnd > 0 && d <= pEnd && dailyRests[d] !== 1) {
+                                    restOk = false; break;
                                 }
-                                if (!finalOk) throw new Error("2plus2");
-                            } else if (scheduleMode.value === '2plus2first') {
-                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
+                            }
+                            if (!restOk && !isRandomMode) throw new Error("daily-rest");
 
-                                // Phase 1: 2+2 — round-robin: first pair early, second pair late
-                                let progress1;
-                                do {
-                                    progress1 = false;
-                                    // Round 1a: first pair — prefer first half of month
-                                    const order1 = Array.from({length: totalEmps}, (_, i) => i);
-                                    for (let i = order1.length - 1; i > 0; i--) {
-                                        const j = Math.floor(Math.random() * (i + 1));
-                                        [order1[i], order1[j]] = [order1[j], order1[i]];
-                                    }
-                                    for (const idx of order1) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        if (getPairStarts(idx).length > 0) continue;
-                                        let bestS = -1, bestScore = -Infinity;
-                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
-                                        for (let i = sOrder.length - 1; i > 0; i--) {
-                                            const j = Math.floor(Math.random() * (i + 1));
-                                            [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
-                                        }
-                                        for (const s of sOrder) {
-                                            if (!canPlaceRestPair(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
-                                            const priorityScore = (s <= pEnd && dailyRests[s] === 0 ? 15 : 0) + (s + 1 <= pEnd && dailyRests[s + 1] === 0 ? 15 : 0);
-                                            const earlyBias = -s * 0.6;
-                                            const score = coverScore + priorityScore + earlyBias + Math.random() * 4;
-                                            if (score > bestScore) { bestScore = score; bestS = s; }
-                                        }
-                                        if (bestS >= 0) {
-                                            placeRestPair(idx, bestS);
-                                            progress1 = true;
+                                                        // ===== PHASE 5: FILL WORK SHIFTS (A/B) =====
+                            // Two-pass fill: first by group, then fill remaining to hit exact targets
+                            for (let d = 1; d <= days; d++) {
+                                const targetA = dayGroupSz;
+                                const targetB = totalEmps - dailyRests[d] - targetA;
+                                let aCount = 0, bCount = 0;
+                                employees.value.forEach((emp, idx) => {
+                                    const v = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
+                                    if (v === 'A' || v === '白') aCount++;
+                                    else if (v === 'B' || v === '晚') bCount++;
+                                });
+                                // Pass 1: fill by group membership
+                                employees.value.forEach((emp, idx) => {
+                                    if (!emp.schedule[d]) {
+                                        if (idx < dayGroupSz && aCount < targetA) {
+                                            emp.schedule[d] = 'A'; aCount++;
+                                        } else if (idx >= dayGroupSz && bCount < targetB) {
+                                            emp.schedule[d] = 'B'; bCount++;
                                         }
                                     }
-                                    // Round 1b: second pair — prefer second half of month
-                                    const order2 = Array.from({length: totalEmps}, (_, i) => i);
-                                    for (let i = order2.length - 1; i > 0; i--) {
-                                        const j = Math.floor(Math.random() * (i + 1));
-                                        [order2[i], order2[j]] = [order2[j], order2[i]];
-                                    }
-                                    for (const idx of order2) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        let bestS = -1, bestScore = -Infinity;
-                                        const sOrder = Array.from({length: days - 1}, (_, i) => i + 1);
-                                        for (let i = sOrder.length - 1; i > 0; i--) {
-                                            const j = Math.floor(Math.random() * (i + 1));
-                                            [sOrder[i], sOrder[j]] = [sOrder[j], sOrder[i]];
-                                        }
-                                        for (const s of sOrder) {
-                                            if (!canPlaceRestPair(idx, s)) continue;
-                                            if (!pairSpacingOk(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 30 : 0) + (dailyRests[s + 1] === 0 ? 30 : 0);
-                                            const priorityScore = (s <= pEnd && dailyRests[s] === 0 ? 15 : 0) + (s + 1 <= pEnd && dailyRests[s + 1] === 0 ? 15 : 0);
-                                            const lateBias = s * 0.6;
-                                            const score = coverScore + priorityScore + lateBias + Math.random() * 4;
-                                            if (score > bestScore) { bestScore = score; bestS = s; }
-                                        }
-                                        if (bestS >= 0) {
-                                            placeRestPair(idx, bestS);
-                                            progress1 = true;
+                                });
+                                // Pass 2: fill remaining empties regardless of group
+                                employees.value.forEach((emp, idx) => {
+                                    if (!emp.schedule[d]) {
+                                        if (aCount < targetA) {
+                                            emp.schedule[d] = 'A'; aCount++;
+                                        } else if (bCount < targetB) {
+                                            emp.schedule[d] = 'B'; bCount++;
+                                        } else {
+                                            emp.schedule[d] = 'A'; aCount++;
                                         }
                                     }
-                                } while (progress1);
+                                });
+                            }
 
-                                // Phase 2: For those without a pair, give at least 1 pair → 2+1+1
-                                for (let round = 0; round < totalEmps; round++) {
-                                    let cands = [];
-                                    for (let idx = 0; idx < totalEmps; idx++) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        if (empRests[idx] + 2 > maxRestPerEmp) continue;
-                                        if (getPairStarts(idx).length > 0) continue;
-                                        for (let s = 1; s < days; s++) {
-                                            if (!canPlaceRestPair(idx, s)) continue;
-                                            const coverScore = (dailyRests[s] === 0 ? 15 : 0) + (dailyRests[s + 1] === 0 ? 15 : 0);
-                                            const needScore = (maxRestPerEmp - empRests[idx]) * 5;
-                                            cands.push({ idx, s, score: coverScore + needScore - dailyRests[s] - dailyRests[s + 1] });
-                                        }
-                                    }
-                                    if (!cands.length) break;
-                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
-                                    placeRestPair(cands[0].idx, cands[0].s);
+// ===== PHASE 6: FINAL VALIDATION =====
+                            for (let d = 1; d <= days; d++) {
+                                const wk = dailyHeadcount(d);
+                                if (wk > maxHeadcount || wk < minHeadcount) {
+                                    throw new Error("headcount");
                                 }
-
-                                // Phase 3: Fill remaining as isolated singles → 1+1+1+1
-                                let filled;
-                                do {
-                                    filled = false;
-                                    const empOrder = Array.from({length: totalEmps}, (_, i) => i);
-                                    for (let i = empOrder.length - 1; i > 0; i--) {
-                                        const j = Math.floor(Math.random() * (i + 1));
-                                        [empOrder[i], empOrder[j]] = [empOrder[j], empOrder[i]];
-                                    }
-                                    for (const idx of empOrder) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        let bestDay = -1, bestScore = -Infinity;
-                                        const dayOrder = Array.from({length: days}, (_, di) => di + 1);
-                                        for (let di = dayOrder.length - 1; di > 0; di--) {
-                                            const dj = Math.floor(Math.random() * (di + 1));
-                                            [dayOrder[di], dayOrder[dj]] = [dayOrder[dj], dayOrder[di]];
-                                        }
-                                        for (const d of dayOrder) {
-                                            if (!canPlaceSingleRest(idx, d)) continue;
-                                            const emp = employees.value[idx];
-                                            const wouldPair = (d > 1 && emp.schedule[d - 1] === '\u4f11') || (d < days && emp.schedule[d + 1] === '\u4f11');
-                                            const score = -dailyRests[d] * 10 + (wouldPair ? -20 : 0) + Math.random() * 3;
-                                            if (score > bestScore) { bestScore = score; bestDay = d; }
-                                        }
-                                        if (bestDay >= 0) {
-                                            placeSingleRest(idx, bestDay);
-                                            filled = true;
-                                        }
-                                    }
-                                } while (filled);
-
-                                let finalOk = true;
-                                for (let idx = 0; idx < totalEmps; idx++) {
-                                    if (empRests[idx] !== maxRestPerEmp) { finalOk = false; }
-                                }
-                                for (let d = 1; d <= days; d++) {
-                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) finalOk = false;
-                                    if (pEnd > 0 && d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) finalOk = false;
-                                }
-                                if (!finalOk) throw new Error("2plus2first-final");
-                                                        } else {
-                                const pEnd = priorityEnabled.value ? Math.min(priorityDays.value, days) : 0;
-                                for (let round = 0; round < totalEmps * 4; round++) {
-                                    let cands = [];
-                                    for (let idx = 0; idx < totalEmps; idx++) {
-                                        if (empRests[idx] >= maxRestPerEmp) continue;
-                                        for (let d = 1; d <= days; d++) {
-                                            if (!canPlaceSingleRest(idx, d)) continue;
-                                            const coverScore = dailyRests[d] === 0 ? 50 : 0;
-                                            const priorityScore = (pEnd > 0 && d <= pEnd && dailyRests[d] === 0) ? 40 : 0;
-                                            const needScore = (maxRestPerEmp - empRests[idx]) * 2;
-                                            const balanceScore = -(dailyRests[d]);
-                                            cands.push({ idx, day: d, score: coverScore + priorityScore + needScore + balanceScore });
-                                        }
-                                    }
-                                    if (!cands.length) break;
-                                    cands.sort((a, b) => b.score - a.score || Math.random() - 0.5);
-                                    placeSingleRest(cands[0].idx, cands[0].day);
-                                }
-                                let finalOk = true;
-                                for (let idx = 0; idx < totalEmps; idx++) {
-                                    if (empRests[idx] < targetRestDays - 1) { finalOk = false; }
-                                }
-                                for (let d = 1; d <= days; d++) {
-                                    if (dailyRests[d] < minRestsPerDay || dailyRests[d] > effectiveMaxRestsPerDay) finalOk = false;
-                                    if (pEnd > 0 && d <= pEnd && dailyRests[d] !== priorityTargetRestsPerDay) finalOk = false;
-                                }
-                                if (!finalOk) throw new Error("random");
                             }
 
                             success = true;
@@ -1229,7 +1123,7 @@
                     for (let d = 1; d <= days; d++) {
                         employees.value.forEach((emp, index) => {
                             if (!emp.schedule[d]) {
-                                emp.schedule[d] = index < 5 ? 'A' : 'B';
+                                emp.schedule[d] = index < dayGroupSz ? 'A' : 'B';
                             }
                         });
                     }
