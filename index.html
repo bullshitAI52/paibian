@@ -1018,7 +1018,7 @@
                                                         (d < days && employees.value[idx].schedule[d + 1] === '休');
                                         const pairPenalty = wouldPair ? -50 : 0;
                                         const needAfter = maxRestPerEmp - empRests[idx] - 1;
-                                        const edgeBias = needAfter > 0 ? Math.min(d - 1, days - d) * 0.5 : 0;
+                                        const edgeBias = needAfter > 0 ? Math.abs(d - days / 2) * 2 : 0;
                                         const dayScore = -dailyRests[d] * 15 + pairPenalty + edgeBias - Math.abs(d - days / 2) * 0.1 + Math.random() * 3;
                                         if (dayScore > bestScore) { bestScore = dayScore; bestDay = d; }
                                     }
