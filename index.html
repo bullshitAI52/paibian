@@ -1058,6 +1058,13 @@
 
 // ===== PHASE 6: FINAL VALIDATION =====
                             for (let d = 1; d <= days; d++) {
+                                employees.value.forEach((emp, idx) => {
+                                    const v = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
+                                    if (idx < dayGroupSz && (v === 'B' || v === '晚')) throw new Error("crossover");
+                                    if (idx >= dayGroupSz && (v === 'A' || v === '白')) throw new Error("crossover");
+                                });
+                            }
+                            for (let d = 1; d <= days; d++) {
                                 const wk = dailyHeadcount(d);
                                 if (wk > maxHeadcount || wk < minHeadcount) {
                                     throw new Error("headcount");
@@ -1300,6 +1307,16 @@
                                     }
                                 });
                             }
+
+                            let crossoverFb = false;
+                            for (let d = 1; d <= days && !crossoverFb; d++) {
+                                employees.value.forEach((emp, idx) => {
+                                    const v = emp.schedule[d] ? emp.schedule[d].trim().toUpperCase() : '';
+                                    if (idx < 5 && (v === 'B' || v === '晚')) crossoverFb = true;
+                                    if (idx >= 5 && (v === 'A' || v === '白')) crossoverFb = true;
+                                });
+                            }
+                            if (crossoverFb) continue;
 
                             let totalWorkFb = 0;
                             for (let d = 1; d <= days; d++) {
