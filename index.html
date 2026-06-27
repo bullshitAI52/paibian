@@ -895,49 +895,20 @@
                                 return starts.every(oldStart => Math.abs(startDay - oldStart) >= 7);
                             };
 
-                            // ===== PHASE 1: PRIORITY DAYS - ensure exactly 1 rest, 5白+4夜 =====
+                            // ===== PHASE 1: PRIORITY DAYS - 前N天只从夜班组休息，确保白班5人全勤 =====
                             if (pEnd > 0) {
-                                const dayQueue = Array.from({length: dayGroupSz}, (_, i) => i);
                                 const nightQueue = Array.from({length: totalEmps - dayGroupSz}, (_, i) => i + dayGroupSz);
-                                let dayPtr = 0, nightPtr = 0;
+                                let nightPtr = 0;
 
                                 for (let d = 1; d <= pEnd; d++) {
                                     if (dailyRests[d] >= 1) continue;
 
                                     let restPick = -1;
-                                    if (d % 2 === 1) {
-                                        for (let tries = 0; tries < nightQueue.length && restPick < 0; tries++) {
-                                            const idx = nightQueue[(nightPtr + tries) % nightQueue.length];
-                                            if (canPlaceSingleRest(idx, d)) {
-                                                restPick = idx;
-                                                nightPtr = (nightPtr + tries + 1) % nightQueue.length;
-                                            }
-                                        }
-                                        if (restPick < 0) {
-                                            for (let tries = 0; tries < dayQueue.length && restPick < 0; tries++) {
-                                                const idx = dayQueue[(dayPtr + tries) % dayQueue.length];
-                                                if (canPlaceSingleRest(idx, d)) {
-                                                    restPick = idx;
-                                                    dayPtr = (dayPtr + tries + 1) % dayQueue.length;
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        for (let tries = 0; tries < dayQueue.length && restPick < 0; tries++) {
-                                            const idx = dayQueue[(dayPtr + tries) % dayQueue.length];
-                                            if (canPlaceSingleRest(idx, d)) {
-                                                restPick = idx;
-                                                dayPtr = (dayPtr + tries + 1) % dayQueue.length;
-                                            }
-                                        }
-                                        if (restPick < 0) {
-                                            for (let tries = 0; tries < nightQueue.length && restPick < 0; tries++) {
-                                                const idx = nightQueue[(nightPtr + tries) % nightQueue.length];
-                                                if (canPlaceSingleRest(idx, d)) {
-                                                    restPick = idx;
-                                                    nightPtr = (nightPtr + tries + 1) % nightQueue.length;
-                                                }
-                                            }
+                                    for (let tries = 0; tries < nightQueue.length && restPick < 0; tries++) {
+                                        const idx = nightQueue[(nightPtr + tries) % nightQueue.length];
+                                        if (canPlaceSingleRest(idx, d)) {
+                                            restPick = idx;
+                                            nightPtr = (nightPtr + tries + 1) % nightQueue.length;
                                         }
                                     }
                                     if (restPick >= 0) {
