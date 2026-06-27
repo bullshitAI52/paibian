@@ -892,7 +892,18 @@
                             const pairSpacingOk = (idx, startDay) => {
                                 const starts = getPairStarts(idx);
                                 if (!starts.length) return true;
-                                return starts.every(oldStart => Math.abs(startDay - oldStart) >= 7);
+                                return starts.every(oldStart => Math.abs(startDay - oldStart) >= 10);
+                            };
+
+                            const minGapToRests = (idx, day) => {
+                                const emp = employees.value[idx];
+                                let minGap = 99;
+                                for (let d = 1; d <= days; d++) {
+                                    if (emp.schedule[d] === '休') {
+                                        minGap = Math.min(minGap, Math.abs(day - d));
+                                    }
+                                }
+                                return minGap;
                             };
 
                             // ===== PHASE 1: PRIORITY DAYS - 前N天只从夜班组休息，确保白班5人全勤 =====
@@ -1005,7 +1016,9 @@
                                         const wouldPair = (d > 1 && employees.value[idx].schedule[d - 1] === '休') ||
                                                         (d < days && employees.value[idx].schedule[d + 1] === '休');
                                         const pairPenalty = wouldPair ? -50 : 0;
-                                        const dayScore = -dailyRests[d] * 15 + pairPenalty - Math.abs(d - days / 2) * 0.1 + Math.random() * 3;
+                                        const gap = minGapToRests(idx, d);
+                                        const spacingPenalty = gap < 7 ? -200 : 0;
+                                        const dayScore = -dailyRests[d] * 15 + pairPenalty + spacingPenalty - Math.abs(d - days / 2) * 0.1 + Math.random() * 3;
                                         if (dayScore > bestScore) { bestScore = dayScore; bestDay = d; }
                                     }
                                     if (bestDay >= 0) {
